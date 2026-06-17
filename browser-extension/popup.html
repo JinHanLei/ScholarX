@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EasyRef PDF Collector</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>EasyRef</h1>
+        <p>保存当前 PDF 到论文库</p>
+      </header>
+
+      <label>
+        <span>API 地址</span>
+        <input id="apiBase" type="url" spellcheck="false" placeholder="http://localhost:5000/api">
+      </label>
+
+      <section class="row">
+        <label class="grow">
+          <span>论文库</span>
+          <select id="librarySelect"></select>
+        </label>
+        <button id="refreshLibraries" type="button" title="刷新论文库">刷新</button>
+      </section>
+
+      <section class="current">
+        <span>当前页面</span>
+        <strong id="currentUrl">读取中...</strong>
+      </section>
+
+      <button id="savePdf" class="primary" type="button">保存 PDF</button>
+      <p id="status" role="status"></p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

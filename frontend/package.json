@@ -1,0 +1,32 @@
+{
+  "name": "easyref-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@chatscope/chat-ui-kit-react": "^2.1.1",
+    "@chatscope/chat-ui-kit-styles": "^1.4.0",
+    "@supabase/supabase-js": "^2.106.1",
+    "@tiptap/core": "^3.26.0",
+    "@tiptap/extension-code-block": "^3.26.0",
+    "@tiptap/extension-placeholder": "^3.26.0",
+    "@tiptap/react": "^3.26.0",
+    "@tiptap/starter-kit": "^3.26.0",
+    "@vitejs/plugin-react": "latest",
+    "katex": "^0.16.47",
+    "lucide-react": "latest",
+    "marked": "^18.0.5",
+    "pdfjs-dist": "^3.11.174",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "turndown": "^7.2.4",
+    "vite": "latest"
+  }
+}

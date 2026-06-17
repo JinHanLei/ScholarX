@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "EasyRef PDF Collector",
+  "description": "Collect the current PDF into an EasyRef paper library.",
+  "version": "0.1.0",
+  "action": {
+    "default_icon": "icon.svg",
+    "default_title": "Save PDF to EasyRef",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost:5173/*",
+        "http://127.0.0.1:5173/*",
+        "http://localhost:5000/*",
+        "http://127.0.0.1:5000/*"
+      ],
+      "js": ["easyref-content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "activeTab",
+    "contextMenus",
+    "notifications",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "icons": {
+    "128": "icon.svg"
+  }
+}

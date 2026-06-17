@@ -1,0 +1,117 @@
+name: easyref
+
+include:
+  - path: ./supabase/er_supabase/docker-compose.yml
+    env_file: ./supabase/er_supabase/.env
+
+services:
+  easyref-schema:
+    profiles: ["init"]
+    image: supabase/postgres:15.8.1.060
+    env_file:
+      - ./.env
+      - ./supabase/er_supabase/.env
+    command:
+      - sh
+      - -c
+      - PGPASSWORD="$$POSTGRES_PASSWORD" psql -h db -p "$$POSTGRES_PORT" -U postgres -d "$$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /schema.sql
+    volumes:
+      - ./supabase/schema.sql:/schema.sql:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    image: easyref-backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - ./.env
+      - ./supabase/er_supabase/.env
+    environment:
+      SUPABASE_URL: ${SUPABASE_URL:-http://kong:8000}
+      SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL:-http://localhost:8000}
+      SUPABASE_DB_URL: ${SUPABASE_DB_URL:-}
+      SUPABASE_DB_POOL_SIZE: ${SUPABASE_DB_POOL_SIZE:-8}
+      SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-easyref-pdfs}
+      DBLP_BATCH_SIZE: ${DBLP_BATCH_SIZE:-500}
+      PDF_TASK_WORKERS: ${PDF_TASK_WORKERS:-2}
+      PDF_FILE_WORKERS: ${PDF_FILE_WORKERS:-4}
+      PDF_TITLE_LOOKUP_TIMEOUT_SECONDS: ${PDF_TITLE_LOOKUP_TIMEOUT_SECONDS:-8}
+      LLM_PROTOCOL: ${LLM_PROTOCOL:-anthropic}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-glm-5.1}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      WEB_SEARCH_PROVIDER: ${WEB_SEARCH_PROVIDER:-bocha}
+      WEB_SEARCH_RESULT_COUNT: ${WEB_SEARCH_RESULT_COUNT:-10}
+      WEB_SEARCH_CONCURRENCY: ${WEB_SEARCH_CONCURRENCY:-10}
+      BOCHA_API_KEY: ${BOCHA_API_KEY:-}
+      BOCHA_SEARCH_URL: ${BOCHA_SEARCH_URL:-https://api.bocha.cn/v1/web-search}
+      BOCHA_FRESHNESS: ${BOCHA_FRESHNESS:-noLimit}
+      BOCHA_SUMMARY: ${BOCHA_SUMMARY:-true}
+      SKILL_ROOT: /app/skills
+      SKILL_STATE_PATH: /app/data/installed_skills.json
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-200}
+      UPLOAD_FOLDER: /app/uploads
+    ports:
+      - "${BACKEND_PORT:-5000}:5000"
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/skills:/app/skills
+      - ./backend/data:/app/data
+      - ./dblp:/app/dblp
+      - ./logs:/app/logs
+    depends_on:
+      kong:
+        condition: service_started
+
+  scheduler:
+    image: easyref-backend
+    command: ["python", "scripts/scheduler.py"]
+    restart: unless-stopped
+    env_file:
+      - ./supabase/er_supabase/.env
+    environment:
+      SUPABASE_URL: ${SUPABASE_URL:-http://kong:8000}
+      SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL:-http://localhost:8000}
+      SUPABASE_DB_URL: ${SUPABASE_DB_URL:-}
+      SUPABASE_DB_POOL_SIZE: ${SUPABASE_DB_POOL_SIZE:-4}
+      DBLP_BATCH_SIZE: ${DBLP_BATCH_SIZE:-500}
+      TZ: ${TZ:-Asia/Shanghai}
+      SCHEDULE_DBLP_ENABLED: ${SCHEDULE_DBLP_ENABLED:-false}
+      SCHEDULE_DBLP_WEEKDAY: ${SCHEDULE_DBLP_WEEKDAY:-6}
+      SCHEDULE_DBLP_HOUR: ${SCHEDULE_DBLP_HOUR:-23}
+      SCHEDULE_DBLP_MINUTE: ${SCHEDULE_DBLP_MINUTE:-30}
+      SCHEDULE_DBLP_SKIP_CCF: ${SCHEDULE_DBLP_SKIP_CCF:-true}
+    volumes:
+      - ./dblp:/app/dblp
+      - ./logs:/app/logs
+    depends_on:
+      kong:
+        condition: service_started
+
+  frontend:
+    image: easyref-frontend
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-http://localhost:8000}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzUyODU0NDAwLCJleHAiOjE5MTA2MjA4MDB9.Sp3rJ8iXrpXJMz7oLcr2X7yyuyS-u495d4LoaTHkKf8}
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-/api}
+      VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-http://localhost:8000}
+      VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzUyODU0NDAwLCJleHAiOjE5MTA2MjA4MDB9.Sp3rJ8iXrpXJMz7oLcr2X7yyuyS-u495d4LoaTHkKf8}
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    depends_on:
+      - backend

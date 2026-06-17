@@ -1,0 +1,15 @@
+{
+  "skills": [
+    {
+      "id": "ppt-master",
+      "name": "ppt-master",
+      "version": "dev",
+      "author": "hugohe3",
+      "source_url": "https://github.com/hugohe3/ppt-master/tree/main",
+      "category": "presentation",
+      "description": "将论文、论文库或综述内容整理成 PPT 大纲与逐页讲稿。",
+      "entrypoint": "agent_prompt",
+      "prompt": "你正在使用 ppt-master skill。目标是把论文内容转化为可直接制作演示文稿的结构。回答时优先输出：1. PPT 标题；2. 10-15 页 slide 大纲；3. 每页标题、核心 bullet、可视化建议；4. 演讲备注；5. 需要用户补充的图表或实验结果。内容必须基于论文上下文，不足之处要明确标注。"
+    }
+  ]
+}
