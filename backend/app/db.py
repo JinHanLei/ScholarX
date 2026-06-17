@@ -116,7 +116,7 @@ def executemany(sql, seq):
 def ensure_schema():
     """Apply lightweight additive migrations needed by the app."""
     statements = [
-        "SELECT pg_advisory_xact_lock(hashtext('easyref_schema_migrations'))",
+        "SELECT pg_advisory_xact_lock(hashtext('scholarx_schema_migrations'))",
         "ALTER TABLE public.library_papers ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ",
         "ALTER TABLE public.paper_detail ADD COLUMN IF NOT EXISTS detail_snippet TEXT",
         "ALTER TABLE public.paper_detail ADD COLUMN IF NOT EXISTS pdf_text_preview TEXT",

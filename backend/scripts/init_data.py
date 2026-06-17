@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the default EasyRef data initialization pipeline."""
+"""Run the default ScholarX data initialization pipeline."""
 
 import argparse
 import subprocess

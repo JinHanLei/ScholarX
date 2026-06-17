@@ -129,7 +129,7 @@ function markdownToHtml(markdown) {
   const mathTokens = [];
   const source = String(markdown || '')
     .replace(/\$\$([\s\S]*?)\$\$/g, (_match, latex) => {
-      const token = `EASYREFBLOCKMATH${mathTokens.length}TOKEN`;
+      const token = `SCHOLARXBLOCKMATH${mathTokens.length}TOKEN`;
       const cleanLatex = latex.trim();
       mathTokens.push({
         token,
@@ -138,7 +138,7 @@ function markdownToHtml(markdown) {
       return `\n\n${token}\n\n`;
     })
     .replace(/(^|[^\\\w])\$([^$\n]+?)\$/g, (_match, prefix, latex) => {
-      const token = `EASYREFINLINEMATH${mathTokens.length}TOKEN`;
+      const token = `SCHOLARXINLINEMATH${mathTokens.length}TOKEN`;
       const cleanLatex = latex.trim();
       mathTokens.push({
         token,
@@ -164,7 +164,7 @@ function htmlToMarkdown(html) {
       || readHtmlAttribute(attrs, 'data-latex').trim()
       || decodeHtmlAttribute(content.replace(/<[^>]+>/g, '')).trim()
     );
-    const token = `EASYREFMATH${mathTokens.length}TOKEN`;
+    const token = `SCHOLARXMATH${mathTokens.length}TOKEN`;
     mathTokens.push(kind === 'block' ? `\n\n$$\n${latex}\n$$\n\n` : `$${latex}$`);
     return token;
   };
@@ -177,7 +177,7 @@ function htmlToMarkdown(html) {
     ));
   let markdown = turndownService.turndown(protectedHtml);
   mathTokens.forEach((value, index) => {
-    markdown = replaceLiteral(markdown, `EASYREFMATH${index}TOKEN`, value);
+    markdown = replaceLiteral(markdown, `SCHOLARXMATH${index}TOKEN`, value);
   });
   return markdown.trimEnd();
 }
@@ -223,7 +223,7 @@ function CodeBlockLanguageNodeView({ node, updateAttributes }) {
   );
 }
 
-const EasyrefCodeBlock = CodeBlock.extend({
+const ScholarXCodeBlock = CodeBlock.extend({
   addNodeView() {
     return ReactNodeViewRenderer(CodeBlockLanguageNodeView);
   },
@@ -294,8 +294,8 @@ function MathBlockNodeView({ node, updateAttributes }) {
   );
 }
 
-const EasyrefMathBlock = Node.create({
-  name: 'easyrefMathBlock',
+const ScholarXMathBlock = Node.create({
+  name: 'scholarxMathBlock',
   group: 'block',
   atom: true,
   selectable: true,
@@ -406,8 +406,8 @@ function InlineMathNodeView({ node, updateAttributes }) {
   );
 }
 
-const EasyrefInlineMath = Node.create({
-  name: 'easyrefInlineMath',
+const ScholarXInlineMath = Node.create({
+  name: 'scholarxInlineMath',
   group: 'inline',
   inline: true,
   atom: true,
@@ -494,7 +494,7 @@ const COPY = {
       backToWorkbench: '返回工作台',
     },
     brand: {
-      name: 'EasyRef Academy',
+      name: 'ScholarX Academy',
       indexed: '篇论文已索引',
       fallback: '研究学习工作室',
     },
@@ -503,7 +503,7 @@ const COPY = {
       title: '一键生成文献综述',
       subtitle:
         '创建论文库、跟踪阅读进度、用 Tag 搭建专题模块，再让 Agent 帮你完成综述、PDF 问答和 LaTeX 草稿。',
-      primary: '进入 EasyRef',
+      primary: '进入 ScholarX',
       secondary: '了解流程',
       navFeatures: '功能',
       navStories: '反馈',
@@ -524,7 +524,7 @@ const COPY = {
       testimonialTwo: '“Tag 列比普通收藏夹更像真正的研究管理。”',
       ctaTitle: '准备开始第一节研究课了吗？',
       ctaDesc: '进入 Demo 后点击左侧添加库，用关键词创建你的第一条论文轨道。',
-      ctaButton: '进入 EasyRef',
+      ctaButton: '进入 ScholarX',
     },
     workbench: {
       eyebrow: '研究课程工作台',
@@ -548,7 +548,7 @@ const COPY = {
       sync: '同步',
       empty: '点击左侧添加库，创建你的第一条研究课程。',
       creatingTitle: '正在检索论文',
-      creatingDesc: 'EasyRef 正在创建论文库并匹配 DBLP 与 CCF 数据，你可以先退到后台继续浏览。',
+      creatingDesc: 'ScholarX 正在创建论文库并匹配 DBLP 与 CCF 数据，你可以先退到后台继续浏览。',
       backgroundNotice: '论文库正在后台创建，完成后会自动刷新列表。',
       backHome: '返回首页',
       pageSize: '每页',
@@ -739,8 +739,8 @@ const COPY = {
       localOnly: '当前为本地登录模式，账号设置需要配置 Supabase。',
     },
     auth: {
-      title: '登录 EasyRef',
-      subtitle: '登录后可以进入 /easyref，查看和管理你的论文库。',
+      title: '登录 ScholarX',
+      subtitle: '登录后可以进入 /scholarx，查看和管理你的论文库。',
       email: '邮箱',
       password: '密码',
       passwordHint: '至少 6 位',
@@ -851,7 +851,7 @@ const COPY = {
       backToWorkbench: 'Back to workbench',
     },
     brand: {
-      name: 'EasyRef Academy',
+      name: 'ScholarX Academy',
       indexed: 'papers indexed',
       fallback: 'research learning studio',
     },
@@ -860,7 +860,7 @@ const COPY = {
       title: 'Turn DBLP search into a guided research course',
       subtitle:
         'Create paper libraries, track reading progress, organize topics with tags, and ask the agent for surveys, PDF Q&A, and LaTeX drafts.',
-      primary: 'Open EasyRef',
+      primary: 'Open ScholarX',
       secondary: 'See flow',
       navFeatures: 'Features',
       navStories: 'Stories',
@@ -881,7 +881,7 @@ const COPY = {
       testimonialTwo: '"The tag column feels more useful than a bookmark folder."',
       ctaTitle: 'Ready for your first research course?',
       ctaDesc: 'Enter the demo, click Add Library, and create your first paper track from keywords.',
-      ctaButton: 'Open EasyRef',
+      ctaButton: 'Open ScholarX',
     },
     workbench: {
       eyebrow: 'Research course workspace',
@@ -905,7 +905,7 @@ const COPY = {
       sync: 'Sync',
       empty: 'Click Add Library on the left to create your first research course.',
       creatingTitle: 'Searching papers',
-      creatingDesc: 'EasyRef is creating the library and matching DBLP plus CCF data. You can send it to the background.',
+      creatingDesc: 'ScholarX is creating the library and matching DBLP plus CCF data. You can send it to the background.',
       backgroundNotice: 'Library creation is running in the background. The list will refresh when it finishes.',
       backHome: 'Back Home',
       pageSize: 'Per page',
@@ -1069,7 +1069,7 @@ const COPY = {
       modelSearch: 'Search models',
       modelSmart: 'Smart',
       modelSmartTitle: 'Smart model routing',
-      modelSmartDesc: 'Planning, retrieval, and summarization can use different models later. For now, EasyRef uses the selected model.',
+      modelSmartDesc: 'Planning, retrieval, and summarization can use different models later. For now, ScholarX uses the selected model.',
       modelLoading: 'Loading models...',
       modelLoadFailed: 'Failed to load models. The default model is used.',
       modelSaved: 'Model settings saved.',
@@ -1096,8 +1096,8 @@ const COPY = {
       localOnly: 'Account settings require Supabase authentication.',
     },
     auth: {
-      title: 'Sign in to EasyRef',
-      subtitle: 'Sign in to access /easyref and manage your paper libraries.',
+      title: 'Sign in to ScholarX',
+      subtitle: 'Sign in to access /scholarx and manage your paper libraries.',
       email: 'Email',
       password: 'Password',
       passwordHint: 'At least 6 characters',
@@ -1208,7 +1208,7 @@ async function api(path, options = {}) {
   return data;
 }
 
-async function downloadApiFile(path, options = {}, fallbackName = 'easyref-export.txt') {
+async function downloadApiFile(path, options = {}, fallbackName = 'scholarx-export.txt') {
   const response = await fetch(`${API}${path}`, {
     headers: options.body instanceof FormData ? undefined : { 'Content-Type': 'application/json' },
     ...options,
@@ -1459,11 +1459,29 @@ function useClickOutside(ref, enabled, onOutside) {
 }
 
 function viewFromPath(pathname = window.location.pathname) {
-  if (pathname === '/easyref' || pathname === '/demo') return 'easyref';
+  if (pathname === '/scholarx' || pathname === '/easyref' || pathname === '/demo') return 'scholarx';
   if (pathname === '/profile') return 'profile';
   if (pathname === '/trash') return 'trash';
   return 'home';
 }
+
+function migrateLegacyStorageKeys() {
+  if (typeof window === 'undefined') return;
+  try {
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (!key?.startsWith('easyref.')) continue;
+      const nextKey = `scholarx.${key.slice('easyref.'.length)}`;
+      if (window.localStorage.getItem(nextKey) === null) {
+        window.localStorage.setItem(nextKey, window.localStorage.getItem(key) || '');
+      }
+    }
+  } catch {
+    // Storage can be unavailable in restricted browser contexts.
+  }
+}
+
+migrateLegacyStorageKeys();
 
 function normalizeFolderPath(path) {
   return String(path || '')
@@ -1498,7 +1516,7 @@ function groupModels(models = []) {
 
 function initialLlmSettings() {
   try {
-    const saved = JSON.parse(localStorage.getItem('easyref.llmSettings') || '{}');
+    const saved = JSON.parse(localStorage.getItem('scholarx.llmSettings') || '{}');
     return {
       mode: 'single',
       ...saved,
@@ -1599,9 +1617,9 @@ function formatDateOnly(value) {
 
 function App() {
   const [view, setView] = useState(() => viewFromPath());
-  const [locale, setLocaleState] = useState(() => localStorage.getItem('easyref.locale') || 'zh');
+  const [locale, setLocaleState] = useState(() => localStorage.getItem('scholarx.locale') || 'zh');
   function setLocale(nextLocale) {
-    localStorage.setItem('easyref.locale', nextLocale);
+    localStorage.setItem('scholarx.locale', nextLocale);
     setLocaleState(nextLocale);
   }
   const text = COPY[locale];
@@ -1610,7 +1628,7 @@ function App() {
   const [libraries, setLibraries] = useState([]);
   const [libraryOrder, setLibraryOrder] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem('easyref.libraryOrder') || '[]');
+      return JSON.parse(localStorage.getItem('scholarx.libraryOrder') || '[]');
     } catch {
       return [];
     }
@@ -1693,7 +1711,7 @@ function App() {
   const [editingMessageDraft, setEditingMessageDraft] = useState('');
   const [columns, setColumns] = useState(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem('easyref.columns') || '{"left":1.15,"middle":4,"right":2}');
+      const stored = JSON.parse(localStorage.getItem('scholarx.columns') || '{"left":1.15,"middle":4,"right":2}');
       if (stored.left === 1 && stored.middle === 4 && stored.right === 2) {
         return { left: 1.15, middle: 4, right: 2 };
       }
@@ -1706,7 +1724,7 @@ function App() {
   const [rightPaneCollapsed, setRightPaneCollapsed] = useState(false);
   const [chatSessions, setChatSessions] = useState(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem('easyref.chatSessions') || '[]');
+      const saved = JSON.parse(localStorage.getItem('scholarx.chatSessions') || '[]');
       return saved.length ? saved : [createInitialChat()];
     } catch {
       return [createInitialChat()];
@@ -1716,14 +1734,14 @@ function App() {
   const [skills, setSkills] = useState([]);
   const [activeSkillIds, setActiveSkillIds] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem('easyref.activeSkillIds') || '[]');
+      return JSON.parse(localStorage.getItem('scholarx.activeSkillIds') || '[]');
     } catch {
       return [];
     }
   });
 
   const user = session?.user || null;
-  const userEmail = user?.email || localStorage.getItem('easyref.localUser') || '';
+  const userEmail = user?.email || localStorage.getItem('scholarx.localUser') || '';
   const activeLibraryId = activeLibrary?.id ?? null;
   const activeChat = chatSessions.find((chat) => chat.id === activeChatId)
     || chatSessions.find((chat) => chatBelongsToLibrary(chat, activeLibraryId))
@@ -1830,7 +1848,7 @@ function App() {
   }
 
   function fileDraftKey(fileId = activeFile?.id) {
-    return fileId ? `easyref.fileDraft.${fileId}` : '';
+    return fileId ? `scholarx.fileDraft.${fileId}` : '';
   }
 
   function confirmUnsavedFileExit() {
@@ -1854,7 +1872,7 @@ function App() {
       });
       return () => listener.subscription.unsubscribe();
     }
-    const localUser = localStorage.getItem('easyref.localUser');
+    const localUser = localStorage.getItem('scholarx.localUser');
     setSession(localUser ? { user: { email: localUser } } : null);
     setAuthReady(true);
   }, []);
@@ -1920,18 +1938,18 @@ function App() {
 
   useEffect(() => {
     if (!activeLibrary?.id) {
-      localStorage.removeItem('easyref.activeLibrary');
+      localStorage.removeItem('scholarx.activeLibrary');
       return;
     }
-    localStorage.setItem('easyref.activeLibrary', JSON.stringify({
+    localStorage.setItem('scholarx.activeLibrary', JSON.stringify({
       id: activeLibrary.id,
       name: activeLibrary.name || '',
     }));
   }, [activeLibrary?.id, activeLibrary?.name]);
 
   useEffect(() => {
-    if (userEmail) localStorage.setItem('easyref.userEmail', userEmail);
-    else localStorage.removeItem('easyref.userEmail');
+    if (userEmail) localStorage.setItem('scholarx.userEmail', userEmail);
+    else localStorage.removeItem('scholarx.userEmail');
   }, [userEmail]);
 
   useEffect(() => {
@@ -1965,23 +1983,23 @@ function App() {
   }, [fileWorkbenchOpen, libraryFiles, activeFile?.id, activeFileDirty]);
 
   useEffect(() => {
-    localStorage.setItem('easyref.chatSessions', JSON.stringify(chatSessions.filter(hasUserMessages).slice(0, 30)));
+    localStorage.setItem('scholarx.chatSessions', JSON.stringify(chatSessions.filter(hasUserMessages).slice(0, 30)));
   }, [chatSessions]);
 
   useEffect(() => {
-    localStorage.setItem('easyref.columns', JSON.stringify(columns));
+    localStorage.setItem('scholarx.columns', JSON.stringify(columns));
   }, [columns]);
 
   useEffect(() => {
-    localStorage.setItem('easyref.libraryOrder', JSON.stringify(libraryOrder));
+    localStorage.setItem('scholarx.libraryOrder', JSON.stringify(libraryOrder));
   }, [libraryOrder]);
 
   useEffect(() => {
-    localStorage.setItem('easyref.activeSkillIds', JSON.stringify(enabledSkillIds));
+    localStorage.setItem('scholarx.activeSkillIds', JSON.stringify(enabledSkillIds));
   }, [enabledSkillIds]);
 
   useEffect(() => {
-    localStorage.setItem('easyref.llmSettings', JSON.stringify(llmSettings));
+    localStorage.setItem('scholarx.llmSettings', JSON.stringify(llmSettings));
   }, [llmSettings]);
 
   useEffect(() => {
@@ -2095,7 +2113,7 @@ function App() {
   }, [authReady, activeLibrary?.id]);
 
   function navigate(nextView) {
-    const path = { easyref: '/easyref', profile: '/profile', trash: '/trash', home: '/' }[nextView] || '/';
+    const path = { scholarx: '/scholarx', profile: '/profile', trash: '/trash', home: '/' }[nextView] || '/';
     if (window.location.pathname !== path) {
       window.history.pushState({}, '', path);
     }
@@ -2508,7 +2526,7 @@ function App() {
           setActiveLibrary(data.library);
           setExpandedLibraries((items) => new Set([...items, data.library.id]));
         }
-        navigate('easyref');
+        navigate('scholarx');
         return;
       } else {
         data = await api('/libraries', {
@@ -2529,7 +2547,7 @@ function App() {
       resetSelection();
       await loadLibraryPapers(data.library.id, nextFilters);
       setLibraryCreateStatus('done');
-      navigate('easyref');
+      navigate('scholarx');
       window.setTimeout(() => setLibraryCreateStatus(null), 900);
     } catch (err) {
       setLibraryCreateStatus('error');
@@ -2627,7 +2645,7 @@ function App() {
           sort_dir: primarySort.dir,
         }),
       },
-      `easyref-papers.${format === 'xlsx' ? 'xlsx' : 'csv'}`,
+      `scholarx-papers.${format === 'xlsx' ? 'xlsx' : 'csv'}`,
     );
   }
 
@@ -2639,7 +2657,7 @@ function App() {
         method: 'POST',
         body: citationSelectionPayload({ format }),
       },
-      `easyref-citations.${format === 'bib' ? 'bib' : 'txt'}`,
+      `scholarx-citations.${format === 'bib' ? 'bib' : 'txt'}`,
     );
   }
 
@@ -3286,13 +3304,13 @@ function App() {
 
   async function signOut() {
     if (supabase) await supabase.auth.signOut();
-    localStorage.removeItem('easyref.localUser');
+    localStorage.removeItem('scholarx.localUser');
     setSession(null);
     navigate('home');
   }
 
   if (!authReady) {
-    return <main className="loading-screen"><Sparkles size={28} /><p>Loading EasyRef...</p></main>;
+    return <main className="loading-screen"><Sparkles size={28} /><p>Loading ScholarX...</p></main>;
   }
 
   if (view !== 'home' && !userEmail) {
@@ -3307,7 +3325,7 @@ function App() {
             await supabase.auth.getSession();
           }
           setSession(nextSession);
-          navigate('easyref');
+          navigate('scholarx');
         }}
       />
     );
@@ -3321,7 +3339,7 @@ function App() {
         setLocale={setLocale}
         stats={stats}
         userEmail={userEmail}
-        onDemo={() => navigate('easyref')}
+        onDemo={() => navigate('scholarx')}
         onSignOut={signOut}
       />
     );
@@ -3333,7 +3351,7 @@ function App() {
         text={text}
         user={user}
         userEmail={userEmail}
-        onBack={() => navigate('easyref')}
+        onBack={() => navigate('scholarx')}
       />
     );
   }
@@ -3343,7 +3361,7 @@ function App() {
       <TrashPage
         text={text}
         userEmail={userEmail}
-        onBack={() => navigate('easyref')}
+        onBack={() => navigate('scholarx')}
       />
     );
   }
@@ -3358,7 +3376,7 @@ function App() {
       <aside className={`library-pane ${leftPaneCollapsed ? 'collapsed' : ''}`}>
         <div className="brand-row">
           <div>
-            <button className="workbench-logo" onClick={() => navigate('home')}>EasyRef</button>
+            <button className="workbench-logo" onClick={() => navigate('home')}>ScholarX</button>
             <p className="workbench-index-meta">
               {stats
                 ? (
@@ -4442,7 +4460,7 @@ function FileTreeNodes({
 }
 
 function markdownHeadingId(text, index) {
-  return `easyref-heading-${index}-${String(text || '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-').replace(/^-|-$/g, '') || 'section'}`;
+  return `scholarx-heading-${index}-${String(text || '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-').replace(/^-|-$/g, '') || 'section'}`;
 }
 
 function parseDocumentOutline(content) {
@@ -4501,9 +4519,9 @@ function TiptapMarkdownEditor({ value, onChange }) {
       StarterKit.configure({
         codeBlock: false,
       }),
-      EasyrefCodeBlock,
-      EasyrefMathBlock,
-      EasyrefInlineMath,
+      ScholarXCodeBlock,
+      ScholarXMathBlock,
+      ScholarXInlineMath,
       Placeholder.configure({ placeholder: 'Click to write...' }),
     ],
     content: markdownToHtml(value || ''),
@@ -5001,7 +5019,7 @@ function AuthPage({ text, locale, setLocale, onHome, onAuthed }) {
     try {
       if (!supabase) {
         if (!email.trim()) throw new Error(text.auth.noSupabase);
-        localStorage.setItem('easyref.localUser', email.trim());
+        localStorage.setItem('scholarx.localUser', email.trim());
         onAuthed({ user: { email: email.trim() } });
         return;
       }

@@ -1,6 +1,6 @@
-# EasyRef
+# ScholarX
 
-EasyRef is a React + Flask paper library app built around DBLP, CCF rankings, PDF uploads, web detail enrichment, and an agent chat workflow. The development stack now includes a local self-hosted Supabase bundle for PostgreSQL, Auth, REST, Studio, and Storage.
+ScholarX is a React + Flask paper library app built around DBLP, CCF rankings, PDF uploads, web detail enrichment, and an agent chat workflow. The development stack now includes a local self-hosted Supabase bundle for PostgreSQL, Auth, REST, Studio, and Storage.
 
 ## What Is Included
 
@@ -8,12 +8,12 @@ EasyRef is a React + Flask paper library app built around DBLP, CCF rankings, PD
 - Middle pane: paper table, filtering, add/remove, tag columns, detail enrichment, and PDF upload.
 - Right pane: agent chat over selected papers or the current library, with OpenAI-compatible model support.
 - Docker Compose: Supabase, Flask API, React frontend, and weekly DBLP scheduler.
-- Supabase Storage: uploaded PDFs go into the `easyref-pdfs` bucket.
+- Supabase Storage: uploaded PDFs go into the `scholarx-pdfs` bucket.
 - DBLP import compatibility: scripts live under `backend/scripts` and follow the original streaming + Supabase upsert design.
 
 ## Start
 
-The root `docker-compose.yml` includes `supabase/er_supabase/docker-compose.yml`, so one command starts both Supabase and EasyRef.
+The root `docker-compose.yml` includes `supabase/er_supabase/docker-compose.yml`, so one command starts both Supabase and ScholarX.
 
 ```bash
 docker compose up --build
@@ -33,14 +33,14 @@ The app connects to the local Supabase services inside Docker:
 
 - Supabase API: `http://kong:8000`
 - PostgreSQL: `db:5432`
-- Storage bucket: `easyref-pdfs`
+- Storage bucket: `scholarx-pdfs`
 
-`easyref-schema` is a one-off Compose service for applying `supabase/schema.sql`. The schema creates the EasyRef tables, RLS policies, indexes, and Storage bucket.
+`scholarx-schema` is a one-off Compose service for applying `supabase/schema.sql`. The schema creates the ScholarX tables, RLS policies, indexes, and Storage bucket.
 
 Run it once after Supabase is healthy, or rerun it whenever `supabase/schema.sql` changes:
 
 ```bash
-docker compose --profile init run --rm easyref-schema
+docker compose --profile init run --rm scholarx-schema
 ```
 
 For a hosted Supabase project, fill the cloud values in the root `.env`:
@@ -112,7 +112,7 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_papers_title_trgm ON public.papers U
 
 ## Object Storage
 
-Uploaded PDFs are parsed locally and uploaded to Supabase Storage. The schema creates the `easyref-pdfs` bucket if it does not already exist.
+Uploaded PDFs are parsed locally and uploaded to Supabase Storage. The schema creates the `scholarx-pdfs` bucket if it does not already exist.
 
 ## LLM Provider
 
@@ -129,7 +129,7 @@ EMBEDDING_MODEL=text-embedding-3-small
 ```
 
 Without `LLM_API_KEY`, chat returns a placeholder response so the UI can still be tested.
-Embedding uses an OpenAI-compatible `/v1/embeddings` endpoint. If `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` are empty, EasyRef reuses `LLM_BASE_URL` and `LLM_API_KEY`.
+Embedding uses an OpenAI-compatible `/v1/embeddings` endpoint. If `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` are empty, ScholarX reuses `LLM_BASE_URL` and `LLM_API_KEY`.
 
 ## Web Search Provider
 

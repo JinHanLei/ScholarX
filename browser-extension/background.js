@@ -2,13 +2,13 @@ const DEFAULT_API_BASE = 'http://localhost:5000/api';
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
-    id: 'easyref-save-page-pdf',
-    title: '保存当前 PDF 到 EasyRef',
+    id: 'scholarx-save-page-pdf',
+    title: '保存当前 PDF 到 ScholarX',
     contexts: ['page'],
   });
   chrome.contextMenus.create({
-    id: 'easyref-save-link-pdf',
-    title: '保存链接 PDF 到 EasyRef',
+    id: 'scholarx-save-link-pdf',
+    title: '保存链接 PDF 到 ScholarX',
     contexts: ['link'],
     targetUrlPatterns: ['*://*/*.pdf*'],
   });
@@ -18,9 +18,9 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const sourceUrl = info.linkUrl || normalizePdfViewerUrl(tab?.url || '');
   try {
     const result = await uploadPdfFromUrl({ sourceUrl });
-    notify('EasyRef', result.message || 'PDF 已提交到论文库');
+    notify('ScholarX', result.message || 'PDF 已提交到论文库');
   } catch (error) {
-    notify('EasyRef 上传失败', error.message || String(error));
+    notify('ScholarX 上传失败', error.message || String(error));
   }
 });
 
@@ -32,7 +32,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 async function handleMessage(message) {
-  if (message?.type === 'easyref-active-library') {
+  if (message?.type === 'scholarx-active-library') {
     const payload = sanitizeActiveLibrary(message.payload || {});
     await chrome.storage.local.set(payload);
     return payload;
@@ -52,9 +52,9 @@ async function handleMessage(message) {
   }
   if (message?.type === 'save-settings') {
     const settings = {
-      easyrefApiBase: normalizeApiBase(message.apiBase || DEFAULT_API_BASE),
-      easyrefLibraryId: message.libraryId ? Number(message.libraryId) : null,
-      easyrefLibraryName: message.libraryName || '',
+      scholarxApiBase: normalizeApiBase(message.apiBase || DEFAULT_API_BASE),
+      scholarxLibraryId: message.libraryId ? Number(message.libraryId) : null,
+      scholarxLibraryName: message.libraryName || '',
     };
     await chrome.storage.local.set(settings);
     return settings;
@@ -64,30 +64,30 @@ async function handleMessage(message) {
 
 async function getState() {
   const state = await chrome.storage.local.get([
-    'easyrefApiBase',
-    'easyrefOwner',
-    'easyrefLibraryId',
-    'easyrefLibraryName',
-    'easyrefLastFrontendOrigin',
+    'scholarxApiBase',
+    'scholarxOwner',
+    'scholarxLibraryId',
+    'scholarxLibraryName',
+    'scholarxLastFrontendOrigin',
   ]);
   return {
-    apiBase: normalizeApiBase(state.easyrefApiBase || DEFAULT_API_BASE),
-    owner: state.easyrefOwner || '',
-    libraryId: state.easyrefLibraryId || null,
-    libraryName: state.easyrefLibraryName || '',
-    frontendOrigin: state.easyrefLastFrontendOrigin || '',
+    apiBase: normalizeApiBase(state.scholarxApiBase || DEFAULT_API_BASE),
+    owner: state.scholarxOwner || '',
+    libraryId: state.scholarxLibraryId || null,
+    libraryName: state.scholarxLibraryName || '',
+    frontendOrigin: state.scholarxLastFrontendOrigin || '',
   };
 }
 
 function sanitizeActiveLibrary(payload) {
   const apiBase = payload.apiBase ? normalizeApiBase(payload.apiBase) : undefined;
   const next = {
-    easyrefOwner: payload.owner || '',
-    easyrefLibraryId: payload.libraryId ? Number(payload.libraryId) : null,
-    easyrefLibraryName: payload.libraryName || '',
-    easyrefLastFrontendOrigin: payload.frontendOrigin || '',
+    scholarxOwner: payload.owner || '',
+    scholarxLibraryId: payload.libraryId ? Number(payload.libraryId) : null,
+    scholarxLibraryName: payload.libraryName || '',
+    scholarxLastFrontendOrigin: payload.frontendOrigin || '',
   };
-  if (apiBase) next.easyrefApiBase = apiBase;
+  if (apiBase) next.scholarxApiBase = apiBase;
   return next;
 }
 
@@ -105,7 +105,7 @@ async function uploadPdfFromUrl({ sourceUrl, libraryId, apiBase }) {
   const state = await getState();
   const targetLibraryId = Number(libraryId || state.libraryId);
   if (!targetLibraryId) {
-    throw new Error('请先在插件弹窗选择论文库，或在 EasyRef 中打开一个论文库。');
+    throw new Error('请先在插件弹窗选择论文库，或在 ScholarX 中打开一个论文库。');
   }
 
   const targetApiBase = normalizeApiBase(apiBase || state.apiBase);
@@ -136,7 +136,7 @@ async function uploadPdfFromUrl({ sourceUrl, libraryId, apiBase }) {
     method: 'POST',
     body: form,
   });
-  const upload = await parseJsonResponse(uploadResponse, '上传到 EasyRef 失败');
+  const upload = await parseJsonResponse(uploadResponse, '上传到 ScholarX 失败');
   const libraryName = state.libraryName || `#${targetLibraryId}`;
   return {
     upload,

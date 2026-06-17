@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "EasyRef PDF Collector",
-  "description": "Collect the current PDF into an EasyRef paper library.",
+  "name": "ScholarX PDF Collector",
+  "description": "Collect the current PDF into a ScholarX paper library.",
   "version": "0.1.0",
   "action": {
     "default_icon": "icon.svg",
-    "default_title": "Save PDF to EasyRef",
+    "default_title": "Save PDF to ScholarX",
     "default_popup": "popup.html"
   },
   "background": {
@@ -19,7 +19,7 @@
         "http://localhost:5000/*",
         "http://127.0.0.1:5000/*"
       ],
-      "js": ["easyref-content.js"],
+      "js": ["scholarx-content.js"],
       "run_at": "document_idle"
     }
   ],

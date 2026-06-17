@@ -1,11 +1,11 @@
-name: easyref
+name: scholarx
 
 include:
   - path: ./supabase/er_supabase/docker-compose.yml
     env_file: ./supabase/er_supabase/.env
 
 services:
-  easyref-schema:
+  scholarx-schema:
     profiles: ["init"]
     image: supabase/postgres:15.8.1.060
     env_file:
@@ -25,7 +25,7 @@ services:
     restart: "no"
 
   backend:
-    image: easyref-backend
+    image: scholarx-backend
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -37,7 +37,7 @@ services:
       SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL:-http://localhost:8000}
       SUPABASE_DB_URL: ${SUPABASE_DB_URL:-}
       SUPABASE_DB_POOL_SIZE: ${SUPABASE_DB_POOL_SIZE:-8}
-      SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-easyref-pdfs}
+      SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-scholarx-pdfs}
       DBLP_BATCH_SIZE: ${DBLP_BATCH_SIZE:-500}
       PDF_TASK_WORKERS: ${PDF_TASK_WORKERS:-2}
       PDF_FILE_WORKERS: ${PDF_FILE_WORKERS:-4}
@@ -74,7 +74,7 @@ services:
         condition: service_started
 
   scheduler:
-    image: easyref-backend
+    image: scholarx-backend
     command: ["python", "scripts/scheduler.py"]
     restart: unless-stopped
     env_file:
@@ -99,7 +99,7 @@ services:
         condition: service_started
 
   frontend:
-    image: easyref-frontend
+    image: scholarx-frontend
     build:
       context: .
       dockerfile: frontend/Dockerfile

@@ -47,7 +47,7 @@ def upload_pdf_to_object_store(path, filename):
     if not os.getenv("SUPABASE_URL"):
         return None, None
 
-    bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "easyref-pdfs")
+    bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "scholarx-pdfs")
     key = f"pdfs/{filename}"
     client = get_supabase_client()
     with open(path, "rb") as file:

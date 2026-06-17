@@ -1,4 +1,4 @@
-# EasyRef
+# ScholarX
 
 全开源的Vibe Schloar平台。既然不懂代码可以Vibe Coding，那么不懂论文也可以Vibe Researching。
 
@@ -21,7 +21,7 @@
 1. 论文库管理
     1. 多种论文库构建方式
         - 条件检索生成论文库：支持多样的关键词检索，条件包含年份、等级（内置CCF），例如，可以检索 stock + 26年 + CCF A 的论文。
-        - PDF批量上传：支持单个、多个PDF以及ZIP等格式上传，自动解析-关联论文。后端解析文件并将PDF存入Supabase Storage的 `easyref-pdfs` bucket。
+        - PDF批量上传：支持单个、多个PDF以及ZIP等格式上传，自动解析-关联论文。后端解析文件并将PDF存入Supabase Storage的 `scholarx-pdfs` bucket。
         - 自然语言检索
     2. 论文库支持编辑修改，支持建立子文件夹，允许论文移动/复制
     3. 可在此论文库中继续手动添加或移除论文
@@ -129,10 +129,10 @@ Supabase Studio 登录账号和密码来自 `supabase/er_supabase/.env` 中的 `
 首次启动 Supabase 并等待服务健康后，执行一次 schema 初始化：
 
 ```bash
-docker compose --profile init run --rm easyref-schema
+docker compose --profile init run --rm scholarx-schema
 ```
 
-该命令会应用 `supabase/schema.sql`，创建 EasyRef 所需的数据表、RLS 策略、索引和 Storage bucket。之后如果修改了 `supabase/schema.sql`，可以重新运行该命令。
+该命令会应用 `supabase/schema.sql`，创建 ScholarX 所需的数据表、RLS 策略、索引和 Storage bucket。之后如果修改了 `supabase/schema.sql`，可以重新运行该命令。
 
 ### 4. 初始化 DBLP 与 CCF 数据
 
@@ -186,16 +186,16 @@ SCHEDULE_DBLP_SKIP_CCF=true
 
 Chrome 或 Edge 可加载 `browser-extension` 目录中的扩展：
 
-1. 先启动 EasyRef，默认扩展 API 地址为 `http://localhost:5000/api`。
+1. 先启动 ScholarX，默认扩展 API 地址为 `http://localhost:5000/api`。
 2. 打开 `chrome://extensions`。
 3. 启用开发者模式。
 4. 点击“加载已解压的扩展程序”，选择项目中的 `browser-extension` 目录。
-5. 打开 EasyRef 并选择一个论文库，或在扩展弹窗中选择论文库。
+5. 打开 ScholarX 并选择一个论文库，或在扩展弹窗中选择论文库。
 
 使用方式：
 
-- 在 PDF 页面点击 EasyRef 扩展按钮，选择“保存 PDF”。
-- 在 PDF 链接上右键，选择“保存链接 PDF 到 EasyRef”。
+- 在 PDF 页面点击 ScholarX 扩展按钮，选择“保存 PDF”。
+- 在 PDF 链接上右键，选择“保存链接 PDF 到 ScholarX”。
 
 扩展会调用现有上传接口：
 

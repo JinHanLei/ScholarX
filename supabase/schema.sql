@@ -1,4 +1,4 @@
--- EasyRef Supabase schema.
+-- ScholarX Supabase schema.
 -- Run this in the Supabase SQL editor before starting the app/importer.
 
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
@@ -290,7 +290,7 @@ CREATE POLICY "service manages chat" ON public.chat_messages FOR ALL USING (auth
 CREATE POLICY "service manages metadata" ON public.app_metadata FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
 
 INSERT INTO storage.buckets (id, name, "public")
-VALUES ('easyref-pdfs', 'easyref-pdfs', true)
+VALUES ('scholarx-pdfs', 'scholarx-pdfs', true)
 ON CONFLICT (id) DO UPDATE SET "public" = EXCLUDED."public";
 
 INSERT INTO storage.buckets (id, name, "public")

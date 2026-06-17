@@ -1243,7 +1243,7 @@ def paper_export_response(library_id, rows, export_format):
             output,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True,
-            download_name=f"easyref-papers-{library_id}-{timestamp}.xlsx",
+            download_name=f"scholarx-papers-{library_id}-{timestamp}.xlsx",
         )
 
     output = StringIO()
@@ -1253,7 +1253,7 @@ def paper_export_response(library_id, rows, export_format):
     return Response(
         "\ufeff" + output.getvalue(),
         mimetype="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f"attachment; filename=easyref-papers-{library_id}-{timestamp}.csv"},
+        headers={"Content-Disposition": f"attachment; filename=scholarx-papers-{library_id}-{timestamp}.csv"},
     )
 
 
@@ -1426,7 +1426,7 @@ def parse_library_intent():
         {
             "role": "system",
             "content": (
-                "你是 EasyRef 的论文库创建助手。"
+                "你是 ScholarX 的论文库创建助手。"
                 "从用户自然语言需求中提取适合 DBLP 论文标题检索的英文关键词或短语。"
                 "只返回 JSON，格式：{\"keyword\":\"...\"}。"
                 "不要返回解释，不要返回 markdown。"
@@ -1767,7 +1767,7 @@ def export_library_paper_citations(library_id):
     return Response(
         "\ufeff" + content if style != "bib" else content,
         mimetype=mimetype,
-        headers={"Content-Disposition": f"attachment; filename=easyref-citations-{library_id}-{timestamp}.{extension}"},
+        headers={"Content-Disposition": f"attachment; filename=scholarx-citations-{library_id}-{timestamp}.{extension}"},
     )
 
 
@@ -2722,7 +2722,7 @@ def build_review_markdown(library_id, topic, papers, user_key="", llm_settings=N
 {json.dumps(paper_payload, ensure_ascii=False)}
 """
     result = chat_completion(
-        [{"role": "system", "content": "你是 EasyRef 学术写作智能体，严格遵守用户写作偏好。"}, {"role": "user", "content": prompt}],
+        [{"role": "system", "content": "你是 ScholarX 学术写作智能体，严格遵守用户写作偏好。"}, {"role": "user", "content": prompt}],
         model=(llm_settings or {}).get("model"),
         base_url=(llm_settings or {}).get("base_url"),
         api_key=(llm_settings or {}).get("api_key"),
@@ -2877,7 +2877,7 @@ def export_library_files_zip_route(library_id):
         if not added:
             archive.writestr("empty.txt", "")
     stream.seek(0)
-    name = "easyref-files.zip"
+    name = "scholarx-files.zip"
     if folder_id and folder_id in by_id:
         name = f"{safe_file_name(by_id[folder_id].get('name'))}.zip"
     return send_file(stream, mimetype="application/zip", as_attachment=True, download_name=name)

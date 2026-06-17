@@ -355,7 +355,7 @@ def classify_question_intent(question, paper_refs, llm_settings=None, skills=Non
         for skill in skills or []
     ]
     prompt = f"""
-你是 EasyRef 论文问答路由器，只输出 JSON。
+你是 ScholarX 论文问答路由器，只输出 JSON。
 任务：先识别用户问题意图，再选择问答路由。
 
 可选路由：
@@ -1138,7 +1138,7 @@ def prepare_paper_qa_context(question, papers, upload_rows, llm_settings=None, s
 
 def _answer_system_prompt(qa_route):
     qa_type = (qa_route or {}).get("qa_type") or "in_paper_qa"
-    common = """你是 EasyRef 论文研究助手。
+    common = """你是 ScholarX 论文研究助手。
 回答涉及具体论文内容时，使用 [P1:E1] 这类引用标记。
 如果证据不足，直接说明缺口，并给出下一步检索建议。"""
     if qa_type == "in_paper_qa":

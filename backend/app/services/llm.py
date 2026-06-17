@@ -269,7 +269,7 @@ def build_translation_messages(text, target_language="中文", context=None):
     context = context or {}
     paper_title = context.get("paper_title") or context.get("title") or ""
     paper_context = f"\n论文标题：{paper_title}" if paper_title else ""
-    system = f"""你是 EasyRef 的论文划词翻译助手。
+    system = f"""你是 ScholarX 的论文划词翻译助手。
 任务：把用户选中的论文片段翻译成{target_language}。
 要求：
 - 保持学术语气，忠实准确，不扩写原文没有的信息。
