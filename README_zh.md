@@ -1,6 +1,9 @@
 # ScholarX
 
-全开源的Vibe Schloar平台。既然不懂代码可以Vibe Coding，那么不懂论文也可以Vibe Researching。
+[![English](https://img.shields.io/badge/English-README-blue)](README.md)
+[![简体中文](https://img.shields.io/badge/简体中文-README-green)](README_zh.md)
+
+全开源的 Vibe Scholar 平台。既然不懂代码可以 Vibe Coding，那么不懂论文也可以 Vibe Researching。
 
 ## 一、项目功能
 
@@ -153,11 +156,6 @@ docker compose run --rm backend python scripts/init_data.py --skip-download
 ```bash
 docker compose run --rm backend python scripts/insert_venue.py /app/ccf_2022_with_dblp_key.csv
 ```
-
-也可以通过后端接口触发同样的数据流程：
-
-- `POST /api/admin/data-init`
-- `POST /api/admin/dblp-update`
 
 DBLP 数据量较大，导入过程会消耗较多时间和内存。
 
