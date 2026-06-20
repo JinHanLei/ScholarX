@@ -4,29 +4,25 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node scripts/sync-vditor-assets.mjs",
     "dev": "vite --host 0.0.0.0",
+    "prebuild": "node scripts/sync-vditor-assets.mjs",
     "build": "vite build",
+    "prepreview": "node scripts/sync-vditor-assets.mjs",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
     "@chatscope/chat-ui-kit-react": "^2.1.1",
     "@chatscope/chat-ui-kit-styles": "^1.4.0",
     "@supabase/supabase-js": "^2.106.1",
-    "@tiptap/core": "^3.26.0",
-    "@tiptap/extension-code-block": "^3.26.0",
-    "@tiptap/extension-placeholder": "^3.26.0",
-    "@tiptap/react": "^3.26.0",
-    "@tiptap/starter-kit": "^3.26.0",
-    "@vitejs/plugin-react": "latest",
-    "katex": "^0.16.47",
+    "@vitejs/plugin-react": "^6.0.2",
     "lucide-react": "latest",
-    "marked": "^18.0.5",
     "pdfjs-dist": "^3.11.174",
     "react": "latest",
     "react-dom": "latest",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
-    "turndown": "^7.2.4",
-    "vite": "latest"
+    "vditor": "^3.11.2",
+    "vite": "^8.0.16"
   }
 }

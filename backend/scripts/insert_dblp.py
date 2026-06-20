@@ -88,6 +88,9 @@ class DBLPProcessor:
         self.ready_papers = []
         self.pending_papers = defaultdict(list)
         self.batch_size = int(os.getenv("DBLP_BATCH_SIZE", "100"))
+        # PostgREST encodes .in_() filters into the request URI. Keep lookup
+        # batches small enough for Kong even when DBLP keys are unusually long.
+        self.lookup_batch_size = max(1, int(os.getenv("DBLP_LOOKUP_BATCH_SIZE", "50")))
 
     def get_venue_id_by_dblp_detail_key(self, dblp_detail_key):
         if dblp_detail_key in self.venue_cache:
@@ -118,7 +121,7 @@ class DBLPProcessor:
     def fetch_existing_venues(self, dblp_detail_keys):
         keys = [key for key in dict.fromkeys(dblp_detail_keys) if key]
         existing = {}
-        for batch in chunks(keys):
+        for batch in chunks(keys, self.lookup_batch_size):
             response = supabase_client.table("venues").select("id,dblp_detail_key").in_(
                 "dblp_detail_key", batch
             ).execute()
@@ -133,7 +136,7 @@ class DBLPProcessor:
     def fetch_existing_paper_keys(self, dblp_keys):
         keys = [key for key in dict.fromkeys(dblp_keys) if key]
         existing = set()
-        for batch in chunks(keys):
+        for batch in chunks(keys, self.lookup_batch_size):
             response = supabase_client.table("papers").select("dblp_key").in_("dblp_key", batch).execute()
             existing.update(row.get("dblp_key") for row in response.data or [] if row.get("dblp_key"))
         return existing

@@ -1,73 +1,73 @@
 # ScholarX
 
-[![English](https://img.shields.io/badge/English-README-blue)](README.md)
-[![简体中文](https://img.shields.io/badge/简体中文-README-green)](README_zh.md)
+[![简体中文](https://img.shields.io/badge/简体中文-README-green)](README.md)
+[![English](https://img.shields.io/badge/English-README-blue)](README_en.md)
 
-ScholarX is a fully open-source Vibe Scholar platform. If vibe coding makes software building possible without deep coding expertise, then vibe researching should make paper research possible without first becoming a domain expert.
+全开源的 Vibe Scholar 平台。既然不懂代码可以 Vibe Coding，那么不懂论文也可以 Vibe Researching。
 
-## 1. Features
+## 一、项目功能
 
-1. Data sources
-    - Paper data: automatically crawled and parsed DBLP data, plus user-uploaded PDFs collected through the browser extension.
-    - Ranking data: built-in CCF rankings. Users can also curate their own ranking systems and upload spreadsheets for automatic parsing.
-2. Architecture
-    - Frontend: React
-    - Backend: Python Flask
-    - Database and object storage: local or cloud Supabase. Supabase packages PostgreSQL, Auth, REST API, Studio, and Storage into a convenient service layer.
-3. Integrations
-    - LLM: configurable provider support for OpenAI, Google, Anthropic, and other mainstream APIs. The default direction is DeepSeek-compatible usage.
-    - Embedding: configurable provider.
-    - Web search: configurable provider, with Bocha as the default.
+1. 数据源
+    - 论文数据：来自自动爬取、解析DBLP数据 + 用户自主上传pdf（提供插件抓取）
+    - 等级分类：CCF分级，用户也可以自己梳理分级、上传表格文件自动解析
+2. 架构
+    - 前端：React
+    - 后端：Python Flask
+    - 数据库与对象存储：本地或云端Supabase。封装了PostgreSQL、Auth、REST API、Studio和Storage等功能，直接调用非常方便
+3. 接口调用
+    - LLM：自主定义提供商，支持OpenAI、Google、Anthropic等主流接口，默认deepseek
+    - Embedding：自主定义提供商
+    - 网络检索：自主定义提供商，默认Bocha
 
-Main capabilities:
+主要功能包括：
 
-1. Paper library management
-    1. Multiple ways to create libraries
-        - Search-driven library creation: supports keyword search with filters such as year and ranking level, including built-in CCF rankings. For example, search for `stock + 2026 + CCF A`.
-        - Batch PDF upload: supports single PDFs, multiple PDFs, and ZIP files. The backend parses and associates files automatically, then stores PDFs in the Supabase Storage `scholarx-pdfs` bucket.
-        - Natural-language search.
-    2. Libraries can be edited, organized into subfolders, and used to move or copy papers.
-    3. Papers can be manually added to or removed from an existing library.
-2. Paper metadata maintenance
-    1. Custom tag fields can be used as filters to track reading progress and research clues.
-    2. ScholarX automatically collects paper metadata from multiple sources by default, including abstracts and BibTeX. Missing fields can be filled manually in the frontend.
-    3. Fallback enrichment: when paper metadata is severely incomplete, web search is used to supplement the paper details.
-3. Library sharing: libraries can be shared by user email.
-4. Vibe Research: the right-side Agent panel can answer questions about selected papers or the current library. When one or more documents are provided, questions are routed into several modes:
-    1. In-Paper QA
-        - The answer exists in the paper and does not require extra reasoning, such as "What is the innovation?"
-        - Examples: "What is the innovation?" "What dataset was used in the experiments?"
-        - Strategy: RAG (Keyword + Embedding) plus faithful generation.
-    2. Beyond-Paper Reasoning
-        - The answer is not directly present in the paper and requires reasoning, critique, extension, or new ideas based on the source material.
-        - Examples: "What are the limitations of this method?" "How can it be improved?"
-        - Strategy: retrieval assistance plus deeper LLM reasoning.
-    3. Generative Creation
-        - The user asks for a non-text artifact such as an image, PPT, mind map, or chart.
-        - Examples: "Draw the model architecture." "Generate presentation slides from this paper."
-        - Strategy: call the corresponding multimodal generation tools.
-    4. Orchestrated Task
-        - Complex tasks are decomposed into subtasks, routed to the modes above, and then integrated.
-        - Examples: "Help me write a literature review about XX." "Write a paper about xxx."
-        - Strategy: task planning -> subtask decomposition -> route to modes 1/2/3 -> synthesize the final output.
-5. Browser extension: PDFs can be saved directly into a paper library from a PDF page or PDF link.
+1. 论文库管理
+    1. 多种论文库构建方式
+        - 条件检索生成论文库：支持多样的关键词检索，条件包含年份、等级（内置CCF），例如，可以检索 stock + 26年 + CCF A 的论文。
+        - PDF批量上传：支持单个、多个PDF以及ZIP等格式上传，自动解析-关联论文。后端解析文件并将PDF存入Supabase Storage的 `scholarx-pdfs` bucket。
+        - 自然语言检索
+    2. 论文库支持编辑修改，支持建立子文件夹，允许论文移动/复制
+    3. 可在此论文库中继续手动添加或移除论文
+2. 论文元数据维护
+    1. tag字段可以自定义筛选条件，便于整理阅读进度和研究线索
+    2. 默认自动从多源抓取论文源信息，包括abstract、bib等，若未抓到可在前端手动补充
+    2. 保底机制：对于信息完全缺失的论文，将通过网页搜索补全论文相关详情
+3. 论文库共享：支持按用户邮箱共享论文库
+4. Vibe Research：右侧 Agent 面板可基于选中的论文或当前论文库进行问答，问答功能在传入单个/多个文档后，可分为以下几类，由不同路由调用
+    1. 原文检索型 (In-Paper QA)
+        - 答案存在于论文中，不需要额外推理，比如“创新点是什么”
+        - 示例："创新点是什么？""实验用了什么数据集？"
+        - 策略：RAG (Keyword+Embedding) + 忠实生成
+    2. 知识推理型 (Beyond-Paper Reasoning)
+        - 答案不存在于原文，需基于原文进行推理、批判、扩展或提出新想法
+        - 示例："这个方法有什么局限性？""如何改进？"
+        - 策略：检索辅助 + LLM 深层推理
+    3. 生成创作型 (Generative Creation)
+        - 要求输出非纯文本的实体，如图片、PPT、思维导图、图表等
+        - 示例："画出模型架构图。""根据论文生成讲解PPT。"
+        - 策略：调用对应的多模态生成工具
+    4. 编排规划型 (Orchestrated Task)
+        - 复杂任务，需分解为多个子问题，依次或并行调用上述三种能力
+        - 示例："帮我写一篇关于XX的文献综述。""写一篇有关xxx的论文"
+        - 策略：任务规划 → 分解子任务 → 路由子任务到 1/2/3 → 整合输出
+5. 浏览器扩展：可从PDF页面或PDF链接直接保存到论文库
 
-## 2. Deployment
+## 二、部署方法
 
-### 1. Prepare the Environment
+### 1. 准备环境
 
-Install:
+需要先安装：
 
 - Docker
 - Docker Compose
 
-To customize ports, model settings, search services, or a cloud Supabase project, copy and edit the environment file first:
+自定义端口、模型、搜索服务或 Supabase 云端项目，请先复制并修改环境变量：
 
 ```bash
 cp .env.example .env
 ```
 
-LLM and Embedding configuration. Supported `LLM_PROTOCOL` values include `anthropic`, `openai`, and `google`:
+LLM 与 Embedding 配置。支持的 `LLM_PROTOCOL` 包括 `anthropic`、`openai` 和 `google`：
 
 ```env
 LLM_PROTOCOL=openai
@@ -79,9 +79,9 @@ EMBEDDING_API_KEY=
 EMBEDDING_MODEL=text-embedding-3-small
 ```
 
-If `LLM_API_KEY` is not configured, the chat endpoint returns a placeholder response so the frontend can still be tested. Embedding uses an OpenAI-compatible `/v1/embeddings` endpoint. If `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` is empty, ScholarX reuses `LLM_BASE_URL` and `LLM_API_KEY`.
+如果未配置 `LLM_API_KEY`，聊天接口会返回占位响应，前端仍可用于界面测试。Embedding 使用 OpenAI 兼容的 `/v1/embeddings` 接口；如果 `EMBEDDING_BASE_URL` 或 `EMBEDDING_API_KEY` 为空，会复用 `LLM_BASE_URL` 和 `LLM_API_KEY`。
 
-Web search configuration. Paper detail enrichment uses Bocha by default and falls back to `ddgs` if Bocha is not configured or the request fails:
+网页搜索配置。论文详情补全默认使用 Bocha，并在未配置或请求失败时回退到 `ddgs`：
 
 ```env
 WEB_SEARCH_PROVIDER=bocha
@@ -93,13 +93,13 @@ BOCHA_FRESHNESS=noLimit
 BOCHA_SUMMARY=true
 ```
 
-To force DuckDuckGo search, set:
+如需强制使用 DuckDuckGo 搜索，可设置：
 
 ```env
 WEB_SEARCH_PROVIDER=ddgs
 ```
 
-If you do not want to use the local Supabase stack, configure a cloud Supabase project in the root `.env`:
+如果不使用本地 Supabase，可在根目录 `.env` 中填写云端项目配置：
 
 ```env
 SUPABASE_URL=https://your-project.supabase.co
@@ -108,65 +108,69 @@ SUPABASE_SERVICE_ROLE_KEY=
 SUPABASE_DB_URL=postgresql://postgres.your-project:password@aws-0-region.pooler.supabase.com:6543/postgres?sslmode=require
 ```
 
-After these values are set, the backend uses the cloud Supabase project instead of the default `http://kong:8000`.
+配置后，后端会使用云端 Supabase 项目，而不是默认的 `http://kong:8000`。
 
-### 2. Start the Services
 
-Run this from the project root:
+### 2. 启动服务
+
+在项目根目录执行：
 
 ```bash
 docker compose up --build
 ```
 
-After startup, open:
+启动后访问：
 
-- Frontend: http://localhost:5180
-- Backend health check: http://localhost:5000/health
-- Supabase Studio / API Gateway: http://localhost:8000
+- 前端：http://localhost:5180
+- 后端健康检查：http://localhost:5000/health
+- Supabase Studio / API Gateway：http://localhost:8000
 
-Supabase Studio uses `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD` from `supabase/er_supabase/.env`.
+Supabase Studio 登录账号和密码来自 `db/supabase/.env` 中的 `DASHBOARD_USERNAME` 和 `DASHBOARD_PASSWORD`。
 
-### 3. Initialize the Supabase Schema
+本地 Supabase 配置已同步至当前官方 self-hosting Docker 版本。现有数据使用 PostgreSQL 15，因此根 Compose 叠加 `db/supabase/docker-compose.pg15.yml`，固定在官方 PG15 兼容镜像；不要直接把该数据目录挂载到 PostgreSQL 17 镜像。
 
-After Supabase starts for the first time and the services are healthy, apply the schema once:
+### 3. 初始化 Supabase 表结构
+
+首次启动 Supabase 并等待服务健康后，执行一次 schema 初始化：
 
 ```bash
 docker compose --profile init run --rm scholarx-schema
 ```
 
-This command applies `supabase/schema.sql`, creating the tables, RLS policies, indexes, and Storage bucket required by ScholarX. Run it again whenever `supabase/schema.sql` changes.
+该命令会应用 `db/schema.sql`，创建 ScholarX 所需的数据表、RLS 策略、索引和 Storage bucket。之后如果修改了 `db/schema.sql`，可以重新运行该命令。
 
-### 4. Initialize DBLP and CCF Data
+### 4. 初始化 DBLP 与 CCF 数据
 
-The default initialization process downloads DBLP, parses it with `backend/scripts/insert_dblp.py`, and imports the bundled CCF CSV:
+默认初始化流程会下载 DBLP，使用 `backend/scripts/insert_dblp.py` 解析导入，并导入项目内置的 CCF CSV：
 
 ```bash
 docker compose run --rm backend python scripts/init_data.py
 ```
 
-If you already have `dblp.xml` and `dblp.dtd`, place them in the root `dblp` folder and skip the download:
+如果已经准备好 `dblp.xml` 和 `dblp.dtd`，可放在根目录的 `dblp` 文件夹下，并跳过下载：
 
 ```bash
 docker compose run --rm backend python scripts/init_data.py --skip-download
 ```
 
-To import only the CCF CSV:
+只导入 CCF CSV：
 
 ```bash
 docker compose run --rm backend python scripts/insert_venue.py /app/ccf_2022_with_dblp_key.csv
 ```
 
-DBLP is large, so the import can take significant time and memory.
+DBLP 数据量较大，导入过程会消耗较多时间和内存。
 
-Optional search optimization: if title fuzzy search is slow after a full DBLP import, create an additional trigram index in the Supabase Studio SQL Editor:
+可选搜索性能优化：如果 DBLP 全量导入后标题模糊搜索较慢，可以在 Supabase Studio 的 SQL Editor 中额外创建 trigram 索引：
+
 
 ```sql
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_papers_title_trgm ON public.papers USING GIN (title gin_trgm_ops);
 ```
 
-This index is optional. It improves title similarity and fuzzy matching, but it can take a long time to build on large tables. Create it after the full DBLP import completes.
+这个索引不是必须项。它会提升标题相似度或模糊匹配性能，但在大表上创建耗时较长，建议在 DBLP 全量导入完成后再执行。
 
-Scheduled DBLP refresh: the `scheduler` service can periodically download and import DBLP. The default timezone is `Asia/Shanghai`; enable it in the root `.env`:
+定时 DBLP 更新：`scheduler` 服务可定期下载并导入 DBLP。默认时区为 `Asia/Shanghai`，可在根目录 `.env` 中启用：
 
 ```env
 SCHEDULE_DBLP_ENABLED=true
@@ -176,24 +180,24 @@ SCHEDULE_DBLP_MINUTE=30
 SCHEDULE_DBLP_SKIP_CCF=true
 ```
 
-This configuration runs every Sunday at 23:30. Before downloading, the script compares the official DBLP MD5 file with the last successful `./dblp/dblp.xml.gz.md5`; if the MD5 is unchanged, it skips both the DBLP download and import.
+上述配置表示每周日 23:30 执行。下载前脚本会比较 DBLP 官方 MD5 与上次成功运行保存的 `./dblp/dblp.xml.gz.md5`；如果 MD5 未变化，会跳过 DBLP 下载和导入。
 
-### 5. Load the Browser Extension
+### 5. 加载浏览器扩展
 
-Chrome or Edge can load the extension from the `browser-extension` directory:
+Chrome 或 Edge 可加载 `browser-extension` 目录中的扩展：
 
-1. Start ScholarX first. The default extension API address is `http://localhost:5000/api`.
-2. Open `chrome://extensions`.
-3. Enable Developer mode.
-4. Click "Load unpacked" and select the `browser-extension` directory from this project.
-5. Open ScholarX and select a paper library, or select a library from the extension popup.
+1. 先启动 ScholarX，默认扩展 API 地址为 `http://localhost:5000/api`。
+2. 打开 `chrome://extensions`。
+3. 启用开发者模式。
+4. 点击“加载已解压的扩展程序”，选择项目中的 `browser-extension` 目录。
+5. 打开 ScholarX 并选择一个论文库，或在扩展弹窗中选择论文库。
 
-Usage:
+使用方式：
 
-- On a PDF page, click the ScholarX extension button and choose "保存 PDF".
-- On a PDF link, right-click and choose "保存链接 PDF 到 ScholarX".
+- 在 PDF 页面点击 ScholarX 扩展按钮，选择“保存 PDF”。
+- 在 PDF 链接上右键，选择“保存链接 PDF 到 ScholarX”。
 
-The extension calls the existing upload endpoint:
+扩展会调用现有上传接口：
 
 ```text
 POST /api/libraries/<library_id>/uploads/pdf?async=1

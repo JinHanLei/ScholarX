@@ -11,9 +11,11 @@ frontend/.vite
 backend/uploads/*
 logs
 dblp
-supabase/er_supabase/.idea
-supabase/er_supabase/volumes/db/data
-supabase/er_supabase/volumes/storage
+db/supabase/.idea
+db/supabase/volumes/db/data
+db/supabase/volumes/storage
 
 *.log
 *.tmp
+
+TODO

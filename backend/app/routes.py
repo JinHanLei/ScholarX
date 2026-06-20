@@ -1146,6 +1146,24 @@ def sync_dynamic_library(library_id):
     return added
 
 
+def paper_search_rows(filters, limit=5000, include_details=False):
+    where, params = apply_paper_filters(filters)
+    if include_details:
+        sql = paper_select_sql(where) + " ORDER BY p.pub_year DESC, p.id DESC LIMIT %s"
+        return normalize_paper_rows(query(sql, tuple([*params, int(limit)])))
+    return query(
+        f"SELECT DISTINCT p.id FROM papers p "
+        f"LEFT JOIN venues v ON p.ref_venue=v.id "
+        f"LEFT JOIN category_venue_rankings cvr ON cvr.venue_id=COALESCE(v.main_venue_id, v.id) "
+        f"{where} LIMIT %s",
+        tuple([*params, int(limit)]),
+    )
+
+
+def paper_search_count(filters, limit=5001):
+    return len(paper_search_rows(filters, limit=limit))
+
+
 def process_pdf_task_item(app, task_id, index, file_storage, library_id):
     with app.app_context():
         def progress(stage, detail=""):
@@ -1418,7 +1436,8 @@ def suggest_users():
 
 @api.post("/libraries/intent/parse")
 def parse_library_intent():
-    text = (body().get("text") or "").strip()
+    payload = body()
+    text = (payload.get("text") or "").strip()
     if not text:
         return ok({"error": "missing text"}, 400)
     fallback = re.sub(r"[，。,.!?！？]", " ", text).strip()[:120]
@@ -1427,22 +1446,69 @@ def parse_library_intent():
             "role": "system",
             "content": (
                 "你是 ScholarX 的论文库创建助手。"
-                "从用户自然语言需求中提取适合 DBLP 论文标题检索的英文关键词或短语。"
-                "只返回 JSON，格式：{\"keyword\":\"...\"}。"
+                "把用户的自然语言研究需求转换成适合 DBLP 英文论文标题全文检索的布尔检索式。"
+                "检索式支持英文短语双引号、AND、OR、NOT、括号、减号排除和 :* 前缀匹配。"
+                "先识别研究对象、任务/方法、影响因素等核心概念；不同核心概念用 AND 连接，"
+                "同一概念的常见论文标题表达用 OR 分组，每组通常给出 2 到 4 个准确表达。"
+                "必须保留用户明确提到的关键语义，不要压缩成 stock、news 这类过于宽泛的孤立词；"
+                "也不要加入用户未要求的研究方向。年份、CCF 等级、会议或期刊属于独立筛选条件，"
+                "不要放入 keyword。"
+                "示例：用户想找研究新闻传播度、新闻热度、点赞评论量对股价预测影响的论文，"
+                "keyword 可为 (\"stock price prediction\" OR \"stock forecasting\") AND "
+                "(\"information diffusion\" OR \"news diffusion\" OR \"news popularity\" OR \"social media engagement\")。"
+                "还要生成一个用于结果过少时扩大召回的 broad_keyword：只保留研究对象和任务的核心约束，"
+                "将可能不出现在标题里的细粒度指标改成该领域常见上位词；宽松式仍需与用户意图相关。"
+                "同时用中文生成 relevance_criteria，完整描述后续根据 title 和 abstract 判断相关性的标准。"
+                "只返回 JSON，格式：{\"keyword\":\"...\",\"broad_keyword\":\"...\","
+                "\"relevance_criteria\":\"...\"}。"
                 "不要返回解释，不要返回 markdown。"
             ),
         },
         {"role": "user", "content": text},
     ]
     try:
-        result = chat_completion(messages, temperature=0.1)
+        settings = payload.get("llm") or {}
+        result = chat_completion(
+            messages,
+            model=settings.get("model"),
+            base_url=settings.get("base_url"),
+            api_key=settings.get("api_key"),
+            protocol=settings.get("protocol"),
+            temperature=0.1,
+        )
         content = (result.get("content") or "").strip()
         match = re.search(r"\{.*\}", content, flags=re.S)
         parsed = json.loads(match.group(0) if match else content)
         keyword = str(parsed.get("keyword") or "").strip()
+        broad_keyword = str(parsed.get("broad_keyword") or "").strip()
+        relevance_criteria = str(parsed.get("relevance_criteria") or text).strip()
     except Exception:
         keyword = fallback
-    return ok({"keyword": keyword or fallback})
+        broad_keyword = fallback
+        relevance_criteria = text
+    return ok({
+        "keyword": keyword or fallback,
+        "broad_keyword": broad_keyword or keyword or fallback,
+        "relevance_criteria": relevance_criteria,
+    })
+
+
+@api.post("/libraries/intent/preview")
+def preview_library_intent():
+    payload = body()
+    filters = parse_filters(payload)
+    broad_keyword = str(payload.get("broad_keyword") or "").strip()
+    threshold = max(1, int(os.getenv("SMART_SEARCH_MIN_RESULTS", "10")))
+    strict_count = paper_search_count(filters)
+    broad_count = strict_count
+    if strict_count < threshold and broad_keyword:
+        broad_count = paper_search_count({**filters, "keyword": broad_keyword})
+    return ok({
+        "strict_count": strict_count,
+        "broad_count": broad_count,
+        "threshold": threshold,
+        "use_broad_search": strict_count < threshold and bool(broad_keyword),
+    })
 
 
 @api.get("/libraries")
@@ -1471,6 +1537,11 @@ def list_libraries():
 def create_library():
     payload = body()
     filters = parse_filters(payload)
+    smart_search = bool(payload.get("smart_search"))
+    if smart_search:
+        filters["broad_keyword"] = str(payload.get("broad_keyword") or "").strip()
+        filters["relevance_criteria"] = str(payload.get("relevance_criteria") or "").strip()
+        filters["natural_query"] = str(payload.get("natural_query") or "").strip()
     mode = payload.get("mode") or "static"
     shared_with = payload.get("shared_with") or []
     filters["shared_with"] = shared_with
@@ -1490,9 +1561,17 @@ def create_library():
             filters,
         ),
     )
+    search_summary = None
     if mode == "dynamic" or payload.get("seed", True):
-        sync_dynamic_library(library_id)
-    return ok({"library": get_library_or_404(library_id)}, 201)
+        if smart_search:
+            try:
+                search_summary = seed_smart_search_library(library_id, filters, payload.get("llm") or {})
+            except Exception:
+                execute("DELETE FROM paper_libraries WHERE id=%s", (library_id,))
+                raise
+        else:
+            sync_dynamic_library(library_id)
+    return ok({"library": get_library_or_404(library_id), "search_summary": search_summary}, 201)
 
 
 @api.post("/libraries/from-pdfs")
@@ -2384,6 +2463,115 @@ def paper_classification_text(paper):
         "source": source,
         "content": content[:5000],
     }
+
+
+def classify_smart_search_candidate(paper, criteria, natural_query, settings):
+    abstract = str(paper.get("abstract") or "").strip()
+    if not abstract:
+        return {
+            "paper_id": paper["id"],
+            "matched": False,
+            "confidence": 0,
+            "reason": "缺少 abstract，无法可靠判断",
+            "evidence": "",
+            "source_used": "none",
+        }
+    prompt = f"""判断这篇论文是否符合用户的研究需求。
+用户原始需求：{natural_query}
+判定标准：{criteria}
+
+要求：
+- 基于标题和 abstract 判断论文核心研究问题，不要因个别关键词命中就判为相关。
+- 只返回 JSON 对象：{{"matched":true,"confidence":0.0,"reason":"一句话理由","evidence":"摘要中的关键证据"}}
+
+标题：{paper.get('title') or ''}
+Abstract：{abstract[:6000]}
+"""
+    try:
+        response = chat_completion(
+            [{"role": "system", "content": "你是严谨的论文相关性分类器，只输出 JSON。"}, {"role": "user", "content": prompt}],
+            model=settings.get("model"),
+            base_url=settings.get("base_url"),
+            api_key=settings.get("api_key"),
+            protocol=settings.get("protocol"),
+            temperature=0.1,
+        )
+        parsed = extract_json_object(response.get("content") or "")
+        if not isinstance(parsed, dict):
+            raise ValueError("LLM did not return a JSON object")
+        confidence = max(0.0, min(float(parsed.get("confidence") or 0), 1.0))
+        return {
+            "paper_id": paper["id"],
+            "matched": parsed.get("matched") is True and confidence >= 0.55,
+            "confidence": confidence,
+            "reason": str(parsed.get("reason") or "")[:500],
+            "evidence": str(parsed.get("evidence") or "")[:1000],
+            "source_used": "abstract",
+        }
+    except Exception as exc:
+        return {
+            "paper_id": paper["id"],
+            "matched": False,
+            "confidence": 0,
+            "reason": f"判定失败：{str(exc)[:300]}",
+            "evidence": "",
+            "source_used": "abstract",
+        }
+
+
+def seed_smart_search_library(library_id, filters, llm_settings=None):
+    threshold = max(1, int(os.getenv("SMART_SEARCH_MIN_RESULTS", "10")))
+    strict_filters = {**filters}
+    strict_count = paper_search_count(strict_filters)
+    if strict_count >= threshold:
+        rows = paper_search_rows(strict_filters)
+        added = add_papers_to_library(library_id, [row["id"] for row in rows])
+        execute("UPDATE paper_libraries SET last_synced_at=CURRENT_TIMESTAMP WHERE id=%s", (library_id,))
+        return {"strategy": "strict", "strict_count": strict_count, "candidates": strict_count, "analyzed": 0, "added": added}
+
+    broad_keyword = str(filters.get("broad_keyword") or "").strip()
+    if not broad_keyword:
+        return {"strategy": "strict", "strict_count": strict_count, "candidates": strict_count, "analyzed": 0, "added": 0}
+    settings = llm_settings or {}
+    if not (settings.get("base_url") or os.getenv("LLM_BASE_URL")) or not (settings.get("api_key") or os.getenv("LLM_API_KEY")):
+        raise ValueError("宽松检索后的摘要筛选需要先配置 LLM")
+
+    candidate_limit = max(1, int(os.getenv("SMART_SEARCH_MAX_CANDIDATES", "120")))
+    broad_filters = {**filters, "keyword": broad_keyword}
+    candidates = paper_search_rows(broad_filters, limit=candidate_limit, include_details=True)
+    criteria = str(filters.get("relevance_criteria") or filters.get("natural_query") or "").strip()
+    natural_query = str(filters.get("natural_query") or criteria).strip()
+    task_id = execute(
+        """
+        INSERT INTO paper_tasks (library_id, type, status, input_json)
+        VALUES (%s, 'smart_search_classification', 'running', %s)
+        RETURNING id
+        """,
+        (library_id, {"strict_count": strict_count, "broad_keyword": broad_keyword, "candidate_count": len(candidates), "criteria": criteria}),
+    )
+    workers = max(1, min(int(os.getenv("SMART_SEARCH_WORKERS", "8")), len(candidates) or 1))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        results = list(executor.map(
+            lambda paper: classify_smart_search_candidate(paper, criteria, natural_query, settings),
+            candidates,
+        ))
+    matched_ids = [item["paper_id"] for item in results if item.get("matched")]
+    added = add_papers_to_library(library_id, matched_ids)
+    summary = {
+        "strategy": "broad_abstract_filter",
+        "strict_count": strict_count,
+        "candidates": len(candidates),
+        "analyzed": len(candidates),
+        "matched": len(matched_ids),
+        "added": added,
+        "items": results,
+    }
+    execute(
+        "UPDATE paper_tasks SET status='completed', result_json=%s, updated_at=CURRENT_TIMESTAMP WHERE id=%s",
+        (summary, task_id),
+    )
+    execute("UPDATE paper_libraries SET last_synced_at=CURRENT_TIMESTAMP WHERE id=%s", (library_id,))
+    return {key: value for key, value in summary.items() if key != "items"}
 
 
 def load_library_papers_for_tools(library_id, folder="", tag="", limit=None):

@@ -10,7 +10,7 @@ ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 
 COPY frontend/package.json frontend/package-lock.json* /app/
-RUN npm install
+RUN npm install --no-audit --no-fund
 
 COPY frontend /app
 RUN npm run build

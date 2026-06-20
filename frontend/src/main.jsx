@@ -2,17 +2,9 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createRoot } from 'react-dom/client';
 import { createClient } from '@supabase/supabase-js';
 import * as pdfjsLib from 'pdfjs-dist/build/pdf';
-import { mergeAttributes, Node } from '@tiptap/core';
-import CodeBlock from '@tiptap/extension-code-block';
-import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Placeholder from '@tiptap/extension-placeholder';
-import katex from 'katex';
-import 'katex/dist/katex.min.css';
-import { marked } from 'marked';
-import TurndownService from 'turndown';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import VditorMarkdownEditor from './VditorMarkdownEditor';
 import {
   ArrowRight,
   ArrowUpDown,
@@ -59,402 +51,6 @@ import {
 import './styles.css';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js?v=pdfjs-3.11.174';
-
-const turndownService = new TurndownService({
-  headingStyle: 'atx',
-  codeBlockStyle: 'fenced',
-  bulletListMarker: '-',
-});
-
-function escapeHtmlAttribute(value) {
-  return String(value || '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('"', '&quot;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;');
-}
-
-function decodeHtmlAttribute(value) {
-  const text = String(value || '');
-  if (typeof document === 'undefined') {
-    return text
-      .replaceAll('&quot;', '"')
-      .replaceAll('&lt;', '<')
-      .replaceAll('&gt;', '>')
-      .replaceAll('&amp;', '&');
-  }
-  const textarea = document.createElement('textarea');
-  textarea.innerHTML = text;
-  return textarea.value;
-}
-
-function readHtmlAttribute(attrs, name) {
-  const match = String(attrs || '').match(new RegExp(`${name}=(["'])([\\s\\S]*?)\\1`, 'i'));
-  return match ? decodeHtmlAttribute(match[2]) : '';
-}
-
-function readMathLatexElement(element) {
-  return (
-    element.querySelector?.('[data-math-source="true"]')?.textContent
-    || element.getAttribute?.('data-latex')
-    || element.textContent
-    || ''
-  );
-}
-
-function replaceLiteral(source, search, replacement) {
-  return String(source || '').split(search).join(replacement);
-}
-
-turndownService.addRule('math', {
-  filter: (node) => node.getAttribute?.('data-type') === 'block-math' || node.getAttribute?.('data-type') === 'inline-math',
-  replacement: (_content, node) => {
-    const latex = node.getAttribute('data-latex') || node.textContent || '';
-    return node.getAttribute('data-type') === 'block-math'
-      ? `\n\n$$\n${latex.trim()}\n$$\n\n`
-      : `$${latex.trim()}$`;
-  },
-});
-
-turndownService.addRule('fencedCodeBlockWithLanguage', {
-  filter: (node) => node.nodeName === 'PRE' && node.firstChild?.nodeName === 'CODE',
-  replacement: (_content, node) => {
-    const code = node.firstChild;
-    const language = String(code.getAttribute('class') || '').match(/language-([\w-]+)/)?.[1] || code.getAttribute('data-language') || '';
-    return `\n\n\`\`\`${language}\n${code.textContent || ''}\n\`\`\`\n\n`;
-  },
-});
-
-function markdownToHtml(markdown) {
-  const mathTokens = [];
-  const source = String(markdown || '')
-    .replace(/\$\$([\s\S]*?)\$\$/g, (_match, latex) => {
-      const token = `SCHOLARXBLOCKMATH${mathTokens.length}TOKEN`;
-      const cleanLatex = latex.trim();
-      mathTokens.push({
-        token,
-        html: `<div data-type="block-math" data-latex="${escapeHtmlAttribute(cleanLatex)}"><span data-math-source="true">${escapeHtmlAttribute(cleanLatex)}</span></div>`,
-      });
-      return `\n\n${token}\n\n`;
-    })
-    .replace(/(^|[^\\\w])\$([^$\n]+?)\$/g, (_match, prefix, latex) => {
-      const token = `SCHOLARXINLINEMATH${mathTokens.length}TOKEN`;
-      const cleanLatex = latex.trim();
-      mathTokens.push({
-        token,
-        html: `<span data-type="inline-math" data-latex="${escapeHtmlAttribute(cleanLatex)}"></span>`,
-      });
-      return `${prefix}${token}`;
-    });
-  let html = marked.parse(source, { gfm: true, breaks: false });
-  mathTokens.forEach(({ token, html: mathHtml }) => {
-    html = html
-      .replace(new RegExp(`<p>\\s*${token}\\s*</p>`, 'g'), () => mathHtml);
-    html = replaceLiteral(html, token, mathHtml);
-  });
-  return html;
-}
-
-function htmlToMarkdown(html) {
-  const mathTokens = [];
-  const protectMath = (kind, attrs, content = '') => {
-    const sourceMatch = String(content || '').match(/<span\b[^>]*data-math-source=(["'])true\1[^>]*>([\s\S]*?)<\/span>/i);
-    const latex = (
-      (sourceMatch ? decodeHtmlAttribute(sourceMatch[2]).trim() : '')
-      || readHtmlAttribute(attrs, 'data-latex').trim()
-      || decodeHtmlAttribute(content.replace(/<[^>]+>/g, '')).trim()
-    );
-    const token = `SCHOLARXMATH${mathTokens.length}TOKEN`;
-    mathTokens.push(kind === 'block' ? `\n\n$$\n${latex}\n$$\n\n` : `$${latex}$`);
-    return token;
-  };
-  const protectedHtml = String(html || '')
-    .replace(/<div\b([^>]*)>([\s\S]*?)<\/div>/gi, (match, attrs, content) => (
-      /data-type=(["'])block-math\1/i.test(attrs) ? `<p>${protectMath('block', attrs, content)}</p>` : match
-    ))
-    .replace(/<span\b([^>]*)>([\s\S]*?)<\/span>/gi, (match, attrs, content) => (
-      /data-type=(["'])inline-math\1/i.test(attrs) ? protectMath('inline', attrs, content) : match
-    ));
-  let markdown = turndownService.turndown(protectedHtml);
-  mathTokens.forEach((value, index) => {
-    markdown = replaceLiteral(markdown, `SCHOLARXMATH${index}TOKEN`, value);
-  });
-  return markdown.trimEnd();
-}
-
-const CODE_LANGUAGE_SUGGESTIONS = ['python', 'javascript', 'typescript', 'json', 'sql', 'bash', 'r', 'latex', 'text'];
-
-function renderKatexHtml(latex, displayMode = false) {
-  const source = String(latex || '').trim();
-  if (!source) return '';
-  try {
-    return katex.renderToString(source, {
-      displayMode,
-      throwOnError: false,
-      strict: false,
-    });
-  } catch {
-    return escapeHtmlAttribute(source);
-  }
-}
-
-function CodeBlockLanguageNodeView({ node, updateAttributes }) {
-  const language = node.attrs.language || '';
-  const listId = useMemo(() => `code-language-${Math.random().toString(36).slice(2)}`, []);
-  return (
-    <NodeViewWrapper className="code-block-node">
-      <pre>
-        <NodeViewContent as="code" className={language ? `language-${language}` : ''} />
-      </pre>
-      <div className="code-block-language-control" contentEditable={false}>
-        <input
-          value={language}
-          list={listId}
-          placeholder="language"
-          onChange={(event) => updateAttributes({ language: event.target.value.trim() || null })}
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={(event) => event.stopPropagation()}
-        />
-        <datalist id={listId}>
-          {CODE_LANGUAGE_SUGGESTIONS.map((item) => <option key={item} value={item} />)}
-        </datalist>
-      </div>
-    </NodeViewWrapper>
-  );
-}
-
-const ScholarXCodeBlock = CodeBlock.extend({
-  addNodeView() {
-    return ReactNodeViewRenderer(CodeBlockLanguageNodeView);
-  },
-});
-
-function MathBlockNodeView({ node, updateAttributes }) {
-  const [latex, setLatex] = useState(node.attrs.latex || '');
-  const [editing, setEditing] = useState(Boolean(node.attrs.editing));
-  const inputRef = useRef(null);
-  const previewHtml = useMemo(() => renderKatexHtml(latex, true), [latex]);
-
-  useEffect(() => {
-    setLatex(node.attrs.latex || '');
-  }, [node.attrs.latex]);
-
-  useEffect(() => {
-    if (editing) requestAnimationFrame(() => inputRef.current?.focus());
-  }, [editing]);
-
-  function updateLatex(nextLatex) {
-    setLatex(nextLatex);
-    updateAttributes({ latex: nextLatex, editing: true });
-  }
-
-  function confirmFormula() {
-    const nextLatex = latex.trim();
-    updateAttributes({ latex: nextLatex, editing: false });
-    setEditing(false);
-  }
-
-  if (!editing) {
-    return (
-      <NodeViewWrapper
-        className={`math-block-node ${latex.trim() ? '' : 'empty'}`}
-        contentEditable={false}
-        onClick={() => setEditing(true)}
-      >
-        {latex.trim() ? (
-          <div className="math-block-rendered" dangerouslySetInnerHTML={{ __html: previewHtml }} />
-        ) : (
-          <span>点击编辑公式</span>
-        )}
-      </NodeViewWrapper>
-    );
-  }
-
-  return (
-    <NodeViewWrapper className="math-block-node editing" contentEditable={false}>
-      <textarea
-        ref={inputRef}
-        value={latex}
-        placeholder="输入 LaTeX，回车确认，Shift+Enter 换行"
-        onChange={(event) => updateLatex(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-            confirmFormula();
-          }
-        }}
-        onMouseDown={(event) => event.stopPropagation()}
-        onClick={(event) => event.stopPropagation()}
-      />
-      <div
-        className={`math-block-preview ${previewHtml ? '' : 'empty'}`}
-        dangerouslySetInnerHTML={{ __html: previewHtml || '公式预览' }}
-      />
-    </NodeViewWrapper>
-  );
-}
-
-const ScholarXMathBlock = Node.create({
-  name: 'scholarxMathBlock',
-  group: 'block',
-  atom: true,
-  selectable: true,
-  addAttributes() {
-    return {
-      latex: {
-        default: '',
-        parseHTML: readMathLatexElement,
-        renderHTML: (attributes) => ({ 'data-latex': attributes.latex || '' }),
-      },
-      editing: {
-        default: false,
-        rendered: false,
-      },
-    };
-  },
-  parseHTML() {
-    return [{
-      tag: 'div[data-type="block-math"]',
-      getAttrs: (element) => ({
-        latex: readMathLatexElement(element),
-        editing: false,
-      }),
-    }];
-  },
-  renderHTML({ node, HTMLAttributes }) {
-    return [
-      'div',
-      mergeAttributes(HTMLAttributes, { 'data-type': 'block-math', 'data-latex': node.attrs.latex || '' }),
-      ['span', { 'data-math-source': 'true' }, node.attrs.latex || ''],
-    ];
-  },
-  addCommands() {
-    return {
-      insertBlockMath: (options = {}) => ({ commands }) => commands.insertContent({
-        type: this.name,
-        attrs: {
-          latex: options.latex || '',
-          editing: options.editing ?? false,
-        },
-      }),
-    };
-  },
-  addNodeView() {
-    return ReactNodeViewRenderer(MathBlockNodeView);
-  },
-});
-
-function InlineMathNodeView({ node, updateAttributes }) {
-  const [latex, setLatex] = useState(node.attrs.latex || '');
-  const [editing, setEditing] = useState(Boolean(node.attrs.editing));
-  const inputRef = useRef(null);
-  const html = useMemo(() => renderKatexHtml(node.attrs.latex, false), [node.attrs.latex]);
-
-  useEffect(() => {
-    setLatex(node.attrs.latex || '');
-  }, [node.attrs.latex]);
-
-  useEffect(() => {
-    if (editing) requestAnimationFrame(() => inputRef.current?.focus());
-  }, [editing]);
-
-  function updateLatex(nextLatex) {
-    setLatex(nextLatex);
-    updateAttributes({ latex: nextLatex, editing: true });
-  }
-
-  function confirmFormula() {
-    const nextLatex = latex.trim();
-    updateAttributes({ latex: nextLatex, editing: false });
-    setEditing(false);
-  }
-
-  if (editing) {
-    return (
-      <NodeViewWrapper as="span" className="inline-math-node editing" contentEditable={false}>
-        <input
-          ref={inputRef}
-          value={latex}
-          placeholder="LaTeX"
-          onChange={(event) => updateLatex(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              confirmFormula();
-            }
-            if (event.key === 'Escape') {
-              event.preventDefault();
-              setEditing(false);
-            }
-          }}
-          onBlur={confirmFormula}
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={(event) => event.stopPropagation()}
-        />
-      </NodeViewWrapper>
-    );
-  }
-
-  return (
-    <NodeViewWrapper
-      as="span"
-      className={`inline-math-node ${node.attrs.latex ? '' : 'empty'}`}
-      contentEditable={false}
-      onClick={() => setEditing(true)}
-      dangerouslySetInnerHTML={{ __html: html || escapeHtmlAttribute(node.attrs.latex || '') }}
-    />
-  );
-}
-
-const ScholarXInlineMath = Node.create({
-  name: 'scholarxInlineMath',
-  group: 'inline',
-  inline: true,
-  atom: true,
-  selectable: true,
-  addAttributes() {
-    return {
-      latex: {
-        default: '',
-        parseHTML: readMathLatexElement,
-        renderHTML: (attributes) => ({ 'data-latex': attributes.latex || '' }),
-      },
-      editing: {
-        default: false,
-        rendered: false,
-      },
-    };
-  },
-  parseHTML() {
-    return [{
-      tag: 'span[data-type="inline-math"]',
-      getAttrs: (element) => ({
-        latex: readMathLatexElement(element),
-        editing: false,
-      }),
-    }];
-  },
-  renderHTML({ node, HTMLAttributes }) {
-    return [
-      'span',
-      mergeAttributes(HTMLAttributes, { 'data-type': 'inline-math', 'data-latex': node.attrs.latex || '' }),
-    ];
-  },
-  addCommands() {
-    return {
-      insertInlineMath: (options = {}) => ({ commands }) => commands.insertContent({
-        type: this.name,
-        attrs: {
-          latex: options.latex || '',
-          editing: options.editing ?? false,
-        },
-      }),
-    };
-  },
-  addNodeView() {
-    return ReactNodeViewRenderer(InlineMathNodeView);
-  },
-});
 
 const API = import.meta.env.VITE_API_URL || '/api';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:8000';
@@ -2536,6 +2132,7 @@ function App() {
             seed: true,
             filters: payload,
             owner_name: userEmail || 'local',
+            llm: llmSettings,
           },
         });
       }
@@ -2546,6 +2143,11 @@ function App() {
       setTableFilters(nextFilters);
       resetSelection();
       await loadLibraryPapers(data.library.id, nextFilters);
+      if (data.search_summary?.strategy === 'broad_abstract_filter') {
+        showNotice(locale === 'zh'
+          ? `宽松检索 ${data.search_summary.candidates} 篇，摘要筛选后加入 ${data.search_summary.added} 篇`
+          : `Broad search found ${data.search_summary.candidates}; ${data.search_summary.added} passed abstract screening`);
+      }
       setLibraryCreateStatus('done');
       navigate('scholarx');
       window.setTimeout(() => setLibraryCreateStatus(null), 900);
@@ -3693,9 +3295,10 @@ function App() {
                   />
                   </>
                 ) : (
-                  <TiptapMarkdownEditor
+                  <VditorMarkdownEditor
                     value={activeFileDraft}
                     onChange={setActiveFileDraft}
+                    language={locale === 'zh' ? 'zh_CN' : 'en_US'}
                   />
                 )
               ) : (
@@ -3913,6 +3516,7 @@ function App() {
         <LibraryModal
           text={text}
           locale={locale}
+          llmSettings={llmSettings}
           filters={filters}
           library={editingLibrary}
           busy={busy}
@@ -4509,59 +4113,6 @@ function MarkdownRender({ content }) {
     >
       {renderedContent}
     </ReactMarkdown>
-  );
-}
-
-function TiptapMarkdownEditor({ value, onChange }) {
-  const lastMarkdownRef = useRef(value || '');
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        codeBlock: false,
-      }),
-      ScholarXCodeBlock,
-      ScholarXMathBlock,
-      ScholarXInlineMath,
-      Placeholder.configure({ placeholder: 'Click to write...' }),
-    ],
-    content: markdownToHtml(value || ''),
-    immediatelyRender: false,
-    editorProps: {
-      attributes: {
-        class: 'tiptap-editor markdown-body',
-      },
-    },
-    onUpdate: ({ editor: nextEditor }) => {
-      const markdown = htmlToMarkdown(nextEditor.getHTML());
-      lastMarkdownRef.current = markdown;
-      onChange(markdown);
-    },
-  });
-
-  useEffect(() => {
-    if (!editor) return;
-    const nextValue = value || '';
-    if (nextValue === lastMarkdownRef.current) return;
-    lastMarkdownRef.current = nextValue;
-    editor.commands.setContent(markdownToHtml(nextValue), { emitUpdate: false });
-  }, [editor, value]);
-
-  if (!editor) return null;
-  return (
-    <div className="tiptap-editor-shell">
-      <div className="markdown-format-toolbar tiptap-toolbar">
-        <button type="button" className={editor.isActive('heading', { level: 1 }) ? 'active' : ''} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>H1</button>
-        <button type="button" className={editor.isActive('heading', { level: 2 }) ? 'active' : ''} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>H2</button>
-        <button type="button" className={editor.isActive('heading', { level: 3 }) ? 'active' : ''} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>H3</button>
-        <button type="button" className={editor.isActive('bold') ? 'active' : ''} onClick={() => editor.chain().focus().toggleBold().run()}>B</button>
-        <button type="button" className={editor.isActive('bulletList') ? 'active' : ''} onClick={() => editor.chain().focus().toggleBulletList().run()}>列表</button>
-        <button type="button" className={editor.isActive('codeBlock') ? 'active' : ''} onClick={() => editor.chain().focus().toggleCodeBlock().run()}>代码</button>
-        <button type="button" onClick={() => editor.chain().focus().insertInlineMath({ latex: '', editing: true }).run()}>行内公式</button>
-        <button type="button" onClick={() => editor.chain().focus().insertBlockMath({ latex: '', editing: true }).run()}>公式块</button>
-        <button type="button" onClick={() => editor.chain().focus().setHorizontalRule().run()}>分割线</button>
-      </div>
-      <EditorContent editor={editor} />
-    </div>
   );
 }
 
@@ -6471,7 +6022,7 @@ function ShareLibraryModal({ library, onSave, onCancel, busy, text }) {
   );
 }
 
-function LibraryModal({ filters, onCreate, onSync, onCancel, busy, text, locale, library }) {
+function LibraryModal({ filters, onCreate, onSync, onCancel, busy, text, locale, library, llmSettings }) {
   const currentYear = new Date().getFullYear();
   const defaultYears = { year_from: '2023', year_to: String(currentYear) };
   const recentYears = { year_from: String(Math.max(1950, currentYear - 2)), year_to: String(currentYear) };
@@ -6486,6 +6037,8 @@ function LibraryModal({ filters, onCreate, onSync, onCancel, busy, text, locale,
   const [naturalText, setNaturalText] = useState('');
   const [naturalStep, setNaturalStep] = useState('ask');
   const [parsingIntent, setParsingIntent] = useState(false);
+  const [previewingIntent, setPreviewingIntent] = useState(false);
+  const [naturalPreview, setNaturalPreview] = useState(null);
   const [files, setFiles] = useState([]);
   const namePlaceholder = locale === 'zh' ? text.modal.libraryName : text.modal.libraryName;
   const isPdfSource = !library && source === 'pdf';
@@ -6512,6 +6065,8 @@ function LibraryModal({ filters, onCreate, onSync, onCancel, busy, text, locale,
       venues: normalizeVenues(form.venues, form.venue),
       name: form.name.trim() || (isPdfSource ? 'PDF papers' : `${(form.keyword || venueParam(form)).trim()} papers`),
       folders: filters.folders || [],
+      natural_query: naturalText.trim(),
+      smart_search: isNaturalSource && Boolean(naturalPreview?.use_broad_search),
     };
   }
 
@@ -6534,15 +6089,17 @@ function LibraryModal({ filters, onCreate, onSync, onCancel, busy, text, locale,
     try {
       let parsed = null;
       try {
-        parsed = await api('/libraries/intent/parse', { method: 'POST', body: { text: query } });
+        parsed = await api('/libraries/intent/parse', { method: 'POST', body: { text: query, llm: llmSettings } });
       } catch {
         parsed = null;
       }
       const keyword = parsed?.keyword || query.replace(/[，。,.!?！？]/g, ' ').trim();
-      const generatedName = keyword ? `${keyword} papers` : `${query.slice(0, 36)} papers`;
+      const generatedName = `${query.slice(0, 36)}${query.length > 36 ? '...' : ''} papers`;
       setForm({
         ...form,
         keyword,
+        broad_keyword: parsed?.broad_keyword || keyword,
+        relevance_criteria: parsed?.relevance_criteria || query,
         ranks: ['A', 'B', 'C'],
         rank: 'A,B,C',
         venues: [],
@@ -6556,10 +6113,32 @@ function LibraryModal({ filters, onCreate, onSync, onCancel, busy, text, locale,
     }
   }
 
+  async function previewNaturalIntent() {
+    setPreviewingIntent(true);
+    try {
+      const preview = await api('/libraries/intent/preview', {
+        method: 'POST',
+        body: {
+          ...form,
+          rank: rankParam(form),
+          ranks: normalizeRanks(form.ranks, form.rank),
+          venue: venueParam(form),
+          venues: normalizeVenues(form.venues, form.venue),
+          broad_keyword: form.broad_keyword,
+        },
+      });
+      setNaturalPreview(preview);
+      setNaturalStep('ready');
+    } finally {
+      setPreviewingIntent(false);
+    }
+  }
+
   function switchSource(nextSource) {
     setSource(nextSource);
     if (nextSource === 'natural') {
       setNaturalStep('ask');
+      setNaturalPreview(null);
       setForm((current) => ({ ...current, name: '', keyword: '', rank: '', ranks: [], venue: '', venues: [] }));
     }
   }
@@ -6657,8 +6236,17 @@ function LibraryModal({ filters, onCreate, onSync, onCancel, busy, text, locale,
                 )}
                 {naturalStep !== 'ask' && (
                   <div className="flow-card">
-                    <span>{text.modal.parsedKeyword}</span>
-                    <strong>{form.keyword}</strong>
+                    <label>
+                      <span className="label-with-help">{text.modal.parsedKeyword}<KeywordHelp text={text} /></span>
+                      <input
+                        value={form.keyword}
+                        onChange={(event) => {
+                          setForm((current) => ({ ...current, keyword: event.target.value }));
+                          setNaturalPreview(null);
+                          if (naturalStep === 'ready') setNaturalStep('years');
+                        }}
+                      />
+                    </label>
                   </div>
                 )}
                 {naturalStep === 'scope' && (
@@ -6672,12 +6260,28 @@ function LibraryModal({ filters, onCreate, onSync, onCancel, busy, text, locale,
                   <div className="flow-card">
                     <p>{text.modal.naturalYearQuestion}</p>
                     <YearRangeSlider value={form} onChange={(years) => setForm({ ...form, ...years })} text={text} />
-                    <button className="secondary-button" onClick={() => setNaturalStep('ready')}>{text.modal.continue}</button>
+                    <button className="secondary-button" disabled={previewingIntent} onClick={previewNaturalIntent}>
+                      {previewingIntent ? text.modal.naturalParsing : text.modal.continue}
+                    </button>
                   </div>
                 )}
                 {naturalStep === 'ready' && (
                   <div className="flow-card success">
-                    <p>{text.modal.naturalReady}</p>
+                    {naturalPreview?.use_broad_search ? (
+                      <>
+                        <p>{locale === 'zh'
+                          ? `精准检索仅找到 ${naturalPreview.strict_count} 篇。创建时将先用下面的宽松条件召回约 ${naturalPreview.broad_count} 篇候选，再并行分析每篇 abstract，只有符合原始需求的论文才会加入库。`
+                          : `Strict search found only ${naturalPreview.strict_count}. Creation will retrieve about ${naturalPreview.broad_count} broader candidates, screen every abstract in parallel, and add only relevant papers.`}</p>
+                        <label>
+                          <span className="label-with-help">{locale === 'zh' ? '宽松检索式' : 'Broad query'}<KeywordHelp text={text} /></span>
+                          <input value={form.broad_keyword || ''} onChange={(event) => setForm((current) => ({ ...current, broad_keyword: event.target.value }))} />
+                        </label>
+                      </>
+                    ) : (
+                      <p>{locale === 'zh'
+                        ? `精准条件可找到 ${naturalPreview?.strict_count || 0} 篇，将直接按精准条件创建论文库。`
+                        : `Strict search found ${naturalPreview?.strict_count || 0} papers and will be used directly.`}</p>
+                    )}
                     <label>
                       <span>{text.modal.libraryName}</span>
                       <input placeholder={namePlaceholder} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
