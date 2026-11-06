@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import runpy
 import shutil
 import socket
 import subprocess
@@ -62,16 +63,19 @@ def main():
     log = data / 'service.log'
 
     if args.serve:
-        # The wrapper owns the data lock until its server child exits.
+        # Run Flask in this process: Windows venv python.exe may be a redirector,
+        # so Popen.pid is not necessarily the process that owns the listening socket.
         with lock_data(data / '.easyref-service.lock'):
             env = {**os.environ, 'EASYREF_STORAGE': 'local', 'EASYREF_DATA_DIR': str(data),
                    'EASYREF_API_BASE': url + '/api'}
-            server = subprocess.Popen([str(python), str(app / 'backend/run_local.py'),
-                                       '--port', str(args.port), '--data-dir', str(data)],
-                                      cwd=app, env=env)
-            state_path.write_text(json.dumps({'url': url, 'pid': server.pid, 'data_dir': str(data),
+            state_path.write_text(json.dumps({'url': url, 'pid': os.getpid(), 'data_dir': str(data),
                                              'log': str(log), 'package': str(package), 'version': version}), encoding='utf-8')
-            return server.wait()
+            os.environ.update(env)
+            os.chdir(app)
+            sys.path.insert(0, str(app / 'backend'))
+            sys.argv = [str(app / 'backend/run_local.py'), '--port', str(args.port), '--data-dir', str(data)]
+            runpy.run_path(sys.argv[0], run_name='__main__')
+            return 0
 
     # Never replace a running service, even when a different port was requested.
     if not args.prepare and state_path.is_file():
