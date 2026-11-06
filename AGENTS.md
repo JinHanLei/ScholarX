@@ -66,6 +66,14 @@ because a shared file is needed.
   Do not log every chat message or unrelated application-development work as
   a research decision. The active-context endpoint supplies this workflow too.
 
+- For experiment result-table and interpretation work, read
+  `GET /api/projects/<pid>/experiment-results` on the correct instance (Experiment
+  development: 5013). Map existing metric keys to Baseline/Ours through the report
+  endpoint; never invent values or retroactively attach historical runs to Vn.
+  Append observations via the run notes endpoint; it records the actual parameter
+  and metric snapshot. See `docs/EXPERIMENT_RESULTS.md`. These actions do not start
+  experiments; explicit version submission or run execution controls do.
+
 - Use `scripts/start-component.ps1 -Component <name>` for isolated ports and
   `.easyref` data. Never point concurrent services at the same SQLite/project
   directory. Never copy the user's live database as an automatic setup step.
