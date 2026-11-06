@@ -2,8 +2,9 @@
 
 Idea 页面以 React Flow 模型图为中心，不包含聊天面板。讨论在 Codex 聊天中进行，
 模型通过本地 API 更新；页面自动轮询最新状态。模块、连线和说明可直接编辑，
-连续编辑停下约两秒后自动保存。拖动与自动排版只更新外观；结构、模块职责、
-连接或整体设计说明变化自动建立新版本并排队，无需再点击“同步”或“开始实验”。
+连续编辑停下约两秒后自动保存草稿。改结构、说明、拖动、排版或切换页面均不启动实验。
+设计完成后点击“保存为版本”，才固定当前设计、创建统一版本并自动进入实验流程。
+这一操作会包含尚未自动保存的最后一次修改，无需再去 Experiment 点击“开始”。
 支持撤销、重做；未保存的本地修改在当前浏览器标签页中保留，切换工作区后可恢复。
 并发编辑冲突不会覆盖远端版本，可先下载本地副本再重新加载。
 
@@ -29,7 +30,8 @@ Idea 页面以 React Flow 模型图为中心，不包含聊天面板。讨论在
 
 底部蓝条显示实际阶段：设计排队 → 固定源码 → 更新实现 → 校验 → 运行 → 汇总。
 展开可查看事件、停止当前版本或重试失败版本。Experiment 可查看同版本的模型、
-运行日志、配置、源码归档和指标。选择历史图可回看，也可基于旧版继续生成新版本。
+运行日志、配置、源码归档和指标。选择历史图可回看，也可基于旧版继续编辑草稿，
+确认后再保存为新版本。同一设计重复提交不会重复排队；仅外观变化不会开启新的实验。
 
 ## 从当前 Codex 聊天操作模型
 
@@ -63,8 +65,9 @@ python backend/scripts/idea_canvas.py --api-base http://127.0.0.1:5012/api versi
 
 节点类型：`input / backbone / module / output / loss`。更新时保留未改模块的 ID、
 位置与用户标注，优先局部修改。`expected_revision` 必须来自最新读取；冲突时重新读取
-并协调，不能直接覆盖。当前画布修订与研究版本号是不同字段：布局保存会增加修订，
-但不创建新的实验版本。
+并协调，不能直接覆盖。当前画布修订与研究版本号是不同字段：草稿保存增加修订，
+但不创建新的实验版本。Codex 修改模型默认只用 `save` 保存草稿，等待用户点击按钮。
+只有用户明确要求提交版本时才使用 `publish`（参数与 `save` 相同）或版本提交接口。
 
 对应 HTTP 接口：
 
@@ -72,7 +75,8 @@ python backend/scripts/idea_canvas.py --api-base http://127.0.0.1:5012/api versi
 | --- | --- |
 | `GET /api/idea-context` | 当前页面项目/Idea 与实例地址 |
 | `GET/POST /api/projects/<pid>/ideas` | 列表、创建或接入已有 Idea |
-| `GET/PUT /api/projects/<pid>/ideas/<id>` | 读取/乐观锁保存；结构修改自动排队 |
+| `GET/PUT /api/projects/<pid>/ideas/<id>` | 读取/乐观锁保存草稿；不排队 |
+| `POST /api/projects/<pid>/ideas/<id>/versions` | 提交完整 document 与 expected_revision，保存正式版本并排队 |
 | `GET /api/projects/<pid>/idea-versions` | 版本、真实阶段、变更摘要、运行与事件 |
 | `POST /api/idea-versions/<id>/cancel` | 停止版本，保留历史 |
 | `POST /api/idea-versions/<id>/retry` | 同一版本追加重试，不改旧运行 |
@@ -80,7 +84,7 @@ python backend/scripts/idea_canvas.py --api-base http://127.0.0.1:5012/api versi
 不要通过通用组件写入接口或直接编辑 SQLite/研究导出绕过版本管理。
 已有 Idea 可接入画布，原字段和已有 Blueprint 历史保留；通用旧实验界面仍可访问。
 接入已有架构会创建“历史设计”版本，不重新启动历史实验，也不事后改写旧 Run 的设计关联。
-后续结构修改才创建并自动执行下一版本。旧 Blueprint 的 `source_ids` 关系也可用于恢复架构。
+用户点击“保存为版本”后才创建并执行下一版本。旧 Blueprint 的 `source_ids` 关系也可用于恢复架构。
 
 ## 导出与验证
 

@@ -17,6 +17,8 @@ test('layout changes preserve semantic identity; architecture edits do not', () 
   assert.notEqual(semanticGraph(updated), semanticGraph(document));
   assert.equal(changedNodes(document, updated).encoder, 'modified');
   assert.equal(updated.graph.nodes[0].id, 'input');
+  const reordered = JSON.parse(JSON.stringify(document), (key, value) => value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).reverse()) : value);
+  assert.equal(semanticGraph(reordered), semanticGraph(document));
 });
 test('PowerPoint exports native editable shapes and text, not a flattened picture', async () => {
   const buffer = await buildPresentation(document, 3).write({ outputType: 'nodebuffer' });

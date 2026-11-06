@@ -15,12 +15,12 @@ def main(argv=None):
     parser.add_argument('--api-base', default=os.getenv('EASYREF_API_BASE', 'http://127.0.0.1:5000/api'))
     sub = parser.add_subparsers(dest='action', required=True)
     sub.add_parser('context')
-    for name in ('get', 'create', 'save', 'versions'):
+    for name in ('get', 'create', 'save', 'publish', 'versions'):
         command = sub.add_parser(name)
         command.add_argument('--project', required=True)
-        if name in {'get', 'save'}: command.add_argument('--idea', required=True)
+        if name in {'get', 'save', 'publish'}: command.add_argument('--idea', required=True)
         if name == 'create': command.add_argument('--name', required=True)
-        if name == 'save':
+        if name in {'save', 'publish'}:
             command.add_argument('--file', required=True)
             command.add_argument('--expected-revision', type=int, required=True)
             command.add_argument('--reason', required=True)
@@ -35,8 +35,9 @@ def main(argv=None):
         route = f'/projects/{args.project}/ideas'; method = 'POST'; data = {'name': args.name}
     else:
         route = f'/projects/{args.project}/ideas/{args.idea}'
-        if args.action == 'save':
-            method = 'PUT'
+        if args.action in {'save', 'publish'}:
+            method = 'POST' if args.action == 'publish' else 'PUT'
+            if args.action == 'publish': route += '/versions'
             data = {'document': json.loads(Path(args.file).read_text('utf-8-sig')), 'expected_revision': args.expected_revision, 'purpose': args.reason}
     try:
         request = Request(args.api_base.rstrip('/') + route, data=json.dumps(data).encode('utf8') if data is not None else None, method=method, headers={'Content-Type': 'application/json'})

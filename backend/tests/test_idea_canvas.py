@@ -21,7 +21,7 @@ def model():
 
 def publish(service, project, doc=None, record=None):
     record = record or service.create(project['id'])
-    return service.save(project['id'], record['idea_id'], {'expected_revision': record['revision'], 'document': doc or model(), 'purpose': 'TEST DATA design change'})
+    return service.save(project['id'], record['idea_id'], {'expected_revision': record['revision'], 'document': doc or model(), 'purpose': 'TEST DATA design change'}, publish_version=True)
 
 
 def executable_plan(value, workspace):
@@ -88,12 +88,52 @@ def test_adopt_archived_blueprint_without_reexecuting_history(services, project,
     ResearchSchemaService(recovered).restore(project['root_path'])
     assert recovered.one('SELECT stage FROM idea_versions WHERE id=?', (version['id'],))['stage'] == 'imported'
     doc = copy.deepcopy(adopted['document']); doc['graph']['nodes'][0]['position']['x'] += 50
-    moved = publish(service, project, doc, adopted)
+    moved = service.save(project['id'], adopted['idea_id'], {'expected_revision': adopted['revision'], 'document': doc})
     assert not moved['published'] and not queued
     doc['graph']['nodes'][0]['description'] = 'A new architecture change'
     changed = publish(service, project, doc, moved['idea'])
     assert changed['version']['number'] == 2 and changed['version']['stage'] == 'queued'
     assert queued == [project['id']]
+
+
+def test_drafts_only_execute_after_explicit_version_submission(services, project, client, monkeypatch):
+    service = services['ideas']; queued = []
+    monkeypatch.setattr(service, 'kick', queued.append)
+    record = service.create(project['id']); url = f"/api/projects/{project['id']}/ideas/{record['idea_id']}"
+    doc = model()
+    draft = client.put(url, json={'expected_revision': 0, 'document': doc, 'publish': True}).json
+    assert not draft['published'] and not service.versions(project['id']) and not queued
+    doc['description'] = 'Finished design'
+    saved = client.put(url, json={'expected_revision': draft['idea']['revision'], 'document': doc}).json
+    assert not saved['published'] and not service.versions(project['id']) and not queued
+    # The submitted snapshot includes edits made just before clicking, without waiting for autosave.
+    doc['graph']['nodes'][1]['label'] = 'Confirmed backbone'
+    submitted = client.post(url + '/versions', json={'expected_revision': saved['idea']['revision'], 'document': doc}).json
+    assert submitted['published'] and submitted['version']['number'] == 1
+    assert submitted['version']['document']['graph']['nodes'][1]['label'] == 'Confirmed backbone'
+    assert queued == [project['id']]
+    duplicate = client.post(url + '/versions', json={'expected_revision': submitted['idea']['revision'], 'document': doc}).json
+    assert not duplicate['published'] and len(service.versions(project['id'])) == 1
+    assert queued == [project['id']]
+    doc['description'] = 'Next draft, not yet submitted'
+    edited = client.put(url, json={'expected_revision': duplicate['idea']['revision'], 'document': doc}).json
+    assert not edited['published'] and len(service.versions(project['id'])) == 1
+    assert service.versions(project['id'])[0]['document']['description'] == 'Finished design'
+    assert queued == [project['id']]
+    stale = client.post(url + '/versions', json={'expected_revision': duplicate['idea']['revision'], 'document': doc})
+    assert stale.status_code == 400 and len(queued) == 1
+    empty = client.post(url + '/versions', json={'expected_revision': edited['idea']['revision'], 'document': {**doc, 'graph': {'nodes': [], 'edges': []}}})
+    assert empty.status_code == 400 and len(queued) == 1
+
+
+def test_unchanged_imported_design_can_be_explicitly_published(services, project):
+    service = services['ideas']; record = service.create(project['id'])
+    archived = service.save(project['id'], record['idea_id'], {'expected_revision': 0, 'document': model()}, publish_version=True, historical=True)
+    submitted = publish(service, project, archived['idea']['document'], archived['idea'])
+    assert submitted['version']['number'] == 2 and submitted['version']['stage'] == 'queued'
+    service.cancel(submitted['version']['id'])
+    restarted = publish(service, project, submitted['idea']['document'], submitted['idea'])
+    assert restarted['version']['number'] == 3 and restarted['version']['stage'] == 'queued'
 
 
 def test_auto_queue_executes_snapshot_and_retains_real_metrics(services, project, monkeypatch):

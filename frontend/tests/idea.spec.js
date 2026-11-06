@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import JSZip from 'jszip';
 import { readFile } from 'node:fs/promises';
 
-test('model canvas saves automatically, shares experiment versions, and exports editable PPT', async ({ page, request }) => {
+test('canvas autosaves drafts but only the version button starts experiments, with editable PPT export', async ({ page, request }) => {
   const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   const project = (await (await request.post('/api/projects', { data: { name: `Idea Canvas TEST DATA ${Date.now()}` } })).json()).project;
   await page.addInitScript((pid) => { localStorage.setItem('easyref.project', pid); localStorage.setItem('easyref.workspace', 'Idea'); }, project.id);
@@ -15,13 +15,24 @@ test('model canvas saves automatically, shares experiment versions, and exports 
   await page.getByRole('button', { name: '添加 Backbone', exact: true }).click();
   await page.getByLabel('模块名称', { exact: true }).fill('Temporal Encoder');
   await page.getByLabel('模块方法说明').fill('Encode the input sequence.');
-  await expect(page.locator('.idea-save-state')).toHaveText('已保存', { timeout: 12000 });
+  await expect(page.locator('.idea-save-state')).toHaveText('草稿已保存', { timeout: 12000 });
+  expect((await (await request.get(`/api/projects/${project.id}/idea-versions`)).json()).versions).toEqual([]);
+  await expect(page.getByLabel('版本自动流程')).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('.idea-node')).toContainText('Temporal Encoder');
+  expect((await (await request.get(`/api/projects/${project.id}/idea-versions`)).json()).versions).toEqual([]);
+  await page.locator('.idea-node').click();
+  await page.getByLabel('模块方法说明').fill('The final design immediately before submission.');
+  await page.getByRole('button', { name: '保存为版本', exact: true }).click();
   await expect(page.locator('.idea-version-row').first()).toContainText('V1');
   await expect(page.getByLabel('版本自动流程')).toContainText('V1');
+  const version = (await (await request.get(`/api/projects/${project.id}/idea-versions`)).json()).versions[0];
+  expect(version.document.graph.nodes[0].description).toBe('The final design immediately before submission.');
+  await expect(page.getByRole('button', { name: '保存为版本', exact: true })).toBeDisabled();
   const before = (await (await request.get(`/api/projects/${project.id}/idea-versions`)).json()).versions.length;
   await page.getByTitle('关闭模块说明').click();
   await page.getByTitle('自动排版', { exact: true }).click();
-  await expect(page.locator('.idea-save-state')).toHaveText('已保存', { timeout: 12000 });
+  await expect(page.locator('.idea-save-state')).toHaveText('草稿已保存', { timeout: 12000 });
   expect((await (await request.get(`/api/projects/${project.id}/idea-versions`)).json()).versions).toHaveLength(before);
   const downloaded = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出 PPT', exact: true }).click();
@@ -70,12 +81,12 @@ test('external Codex updates appear in the canvas and stale local edits cannot o
   await expect(page.getByLabel('模块名称', { exact: true })).toHaveValue('Remote winner');
 });
 
-test('dragging preserves the version, connections publish, and undo restores deleted modules', async ({ page, request }) => {
+test('dragging and connections remain drafts until submitted, and undo restores deleted modules', async ({ page, request }) => {
   const project = (await (await request.post('/api/projects', { data: { name: `Idea Editing TEST DATA ${Date.now()}` } })).json()).project;
   const idea = (await (await request.post(`/api/projects/${project.id}/ideas`, { data: { name: 'Graph interactions TEST DATA' } })).json()).idea;
   const document = { name: idea.document.name, description: 'TEST DATA editor interaction fixture.', graph: {
     nodes: ['Input', 'Backbone', 'Output'].map((label, index) => ({ id: `node-${index}`, label, kind: ['input', 'backbone', 'output'][index], position: { x: index * 320, y: 0 } })), edges: [] } };
-  await request.put(`/api/projects/${project.id}/ideas/${idea.idea_id}`, { data: { expected_revision: 0, document } });
+  await request.post(`/api/projects/${project.id}/ideas/${idea.idea_id}/versions`, { data: { expected_revision: 0, document } });
   await page.addInitScript((pid) => { localStorage.setItem('easyref.project', pid); localStorage.setItem('easyref.workspace', 'Idea'); }, project.id);
   await page.goto('/');
   await expect(page.locator('.idea-node')).toHaveCount(3);
@@ -94,6 +105,10 @@ test('dragging preserves the version, connections publish, and undo restores del
   await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2); await page.mouse.down();
   await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 12 }); await page.mouse.up();
   await expect(page.locator('.react-flow__edge')).toHaveCount(1);
+  await expect(page.locator('.idea-save-state')).toHaveText('草稿已保存', { timeout: 10000 });
+  expect((await (await request.get(`/api/projects/${project.id}/idea-versions`)).json()).versions).toHaveLength(1);
+  await expect(page.locator('.idea-version-pill').first()).toContainText('草稿');
+  await page.getByRole('button', { name: '保存为版本', exact: true }).click();
   await expect(page.locator('.idea-version-row').first()).toContainText('V2', { timeout: 10000 });
   await backbone.click(); await page.getByRole('button', { name: '删除模块', exact: true }).click();
   await expect(page.locator('.idea-node')).toHaveCount(2);
@@ -102,7 +117,7 @@ test('dragging preserves the version, connections publish, and undo restores del
   await page.getByTitle('重做修改', { exact: true }).click();
   await expect(page.locator('.idea-node')).toHaveCount(2); await expect(page.locator('.react-flow__edge')).toHaveCount(0);
   await page.getByTitle('撤销修改', { exact: true }).click();
-  await expect(page.locator('.idea-save-state')).toHaveText('已保存', { timeout: 10000 });
+  await expect(page.locator('.idea-save-state')).toHaveText('草稿已保存', { timeout: 10000 });
   expect((await (await request.get(`/api/projects/${project.id}/idea-versions`)).json()).versions).toHaveLength(2);
   await page.screenshot({ path: 'test-results/idea-model-editing.png', fullPage: true });
 });
