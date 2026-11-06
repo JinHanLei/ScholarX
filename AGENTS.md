@@ -56,6 +56,16 @@ because a shared file is needed.
   Never substitute edits to application source, SQLite, or research export files
   for updating the user's model canvas.
 
+  When a research discussion settles a change, record one decision through
+  `POST /api/projects/<pid>/ideas/<id>/records` (or CLI `record`), atomically with
+  the complete document and expected revision. Include a stable UUID, title,
+  change, reason and expected validation; reuse the UUID on network retries.
+  Author `document.figure` as a paper-style vector figure, not draggable cards.
+  Preserve prior records; after results are discussed, append a conclusion
+  referencing the exact version and experiment IDs. Read metrics from the runs.
+  Do not log every chat message or unrelated application-development work as
+  a research decision. The active-context endpoint supplies this workflow too.
+
 - Use `scripts/start-component.ps1 -Component <name>` for isolated ports and
   `.easyref` data. Never point concurrent services at the same SQLite/project
   directory. Never copy the user's live database as an automatic setup step.

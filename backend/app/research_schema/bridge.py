@@ -14,7 +14,7 @@ from .exchange import discover, crate
 
 KINDS={'idea':'Idea','blueprint':'ModelBlueprint','module':'ModelModule','claim':'ResearchClaim','paragraph':'PaperParagraph','figure':'Figure','table':'Table','section':'PaperSection','venue_profile':'VenueProfile','task':'Task'}
 DIRECT=['components','experiments','paper_versions','agent_sessions','reviews','submission_attempts','annotations','paper_library_entries']
-IDEA_TABLES = ['idea_documents', 'idea_versions', 'idea_version_runs', 'idea_version_events']
+IDEA_TABLES = ['idea_documents', 'idea_versions', 'idea_version_runs', 'idea_version_events', 'idea_research_records']
 DIRECT += IDEA_TABLES
 CHILDREN=[('revisions','component_id','components'),('paragraph_outlines','paragraph_id','components'),('outline_versions','paragraph_id','components'),('component_links','source_id','components'),('evidence_links','claim_id','components'),('paragraph_evolution','parent_id','components'),('experiment_artifacts','experiment_id','experiments'),('agent_messages','session_id','agent_sessions'),('skill_runs','session_id','agent_sessions'),('review_issues','review_id','reviews'),('submission_events','submission_id','submission_attempts')]
 TABLES=['projects','venues','papers',*DIRECT,'revisions','paragraph_outlines','outline_versions','component_links','evidence_links','paragraph_evolution','experiment_artifacts','agent_messages','skill_runs','review_issues','submission_events']
