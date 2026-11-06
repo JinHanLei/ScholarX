@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Search, Globe, MessageSquare } from 'lucide-react';
+import { Search, Globe } from 'lucide-react';
 import ResearchModal from './ResearchModal.jsx';
 import useLiteratureAssist from './useLiteratureAssist.js';
 import LiteratureSearchResults from './LiteratureSearchResults.jsx';
 import { request, Field } from './shared.jsx';
 
 const defaults = { rank: '', year_from: '', year_to: '', author: '', type: '', venue_id: '', sort: 'year' };
-export default function LiteratureSearch({ mode, initialQuery = '', initialNetwork = false, onNetworkChange, project, onClose, onAdded, openSession, openChat }) {
+export default function LiteratureSearch({ mode, initialQuery = '', initialNetwork = false, onNetworkChange, project, onClose, onAdded, openSession }) {
   const [query, setQuery] = useState(initialQuery);
   const [network, setNetwork] = useState(initialNetwork);
   const [filters, setFilters] = useState(defaults);
@@ -52,7 +52,7 @@ export default function LiteratureSearch({ mode, initialQuery = '', initialNetwo
         <Field label="作者"><input value={filters.author} onChange={(e) => setFilters({ ...filters, author: e.target.value })} /></Field>
         <Field label="期刊 / 会议名称"><select value={filters.venue_id} onChange={(e) => setFilters({ ...filters, venue_id: e.target.value })}><option value="">全部期刊与会议</option>{venues.filter((v) => v.stream).map((v) => <option key={v.id} value={v.id}>{v.abbreviation} · {v.rank}</option>)}</select></Field>
       </div>
-      <button type="button" className="lit-chat-hint" disabled={!project} onClick={() => openChat(query)}><MessageSquare size={15} />你也可以通过聊天来检索</button>
+      <p className="lit-chat-hint">你也可以通过聊天来检索</p>
     </>}
     {(busy || assist.busy) && <div className="lit-search-progress" role="status"><span>{assist.busy ? '正在查询数据库和网络…' : '正在查询数据库…'}</span>{assist.busy && <button type="button" onClick={assist.stop} disabled={!assist.task?.session_id}>停止联网</button>}</div>}
     {assist.task?.notice && <p className="rw-warning" role="status">{assist.task.notice}</p>}

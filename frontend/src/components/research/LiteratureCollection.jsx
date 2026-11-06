@@ -23,7 +23,17 @@ export default function LiteratureCollection({ project, archived = false, epoch,
     } catch (e) { if (version === generation.current) setError(e.message); }
     finally { if (version === generation.current) setLoading(false); }
   };
-  useEffect(() => { load(); return () => { generation.current++; }; }, [project?.id, archived, epoch, sorts, offset]);
+  useEffect(() => {
+    load();
+    const refresh = () => { if (document.visibilityState !== 'hidden') load(); };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      generation.current++;
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [project?.id, archived, epoch, sorts, offset]);
   const change = async (paper, values) => {
     setBusy(true); setError('');
     try { await request(`/projects/${project.id}/library/${paper.id}`, { method: 'PATCH', body: values }); await load(); onChanged?.(); }

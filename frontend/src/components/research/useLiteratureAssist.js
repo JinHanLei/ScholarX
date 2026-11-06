@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { request } from './shared.jsx';
 
 export default function useLiteratureAssist(project, kind) {
@@ -26,6 +26,5 @@ export default function useLiteratureAssist(project, kind) {
   const stop = async () => { try { await request(`/sessions/${task.session_id}/interrupt`, { method: 'POST', body: {} }); setTask((old) => ({ ...old, status: 'interrupted' })); } catch (e) { setError(e.message); } };
   const busy = starting || ['running', 'starting', 'idle', 'waiting_approval'].includes(task?.status);
   const reset = () => { generation.current++; setStarting(false); setTask(null); setError(''); };
-  const restore = useCallback((id) => { generation.current++; setStarting(false); setError(''); setTask({ session_id: id, status: 'running' }); }, []);
-  return { task, submittedText, error: error || task?.error || (task?.status === 'interrupted' ? '任务已停止，可重新发起。' : ''), busy, start, stop, reset, restore };
+  return { task, submittedText, error: error || task?.error || (task?.status === 'interrupted' ? '任务已停止，可重新发起。' : ''), busy, start, stop, reset };
 }

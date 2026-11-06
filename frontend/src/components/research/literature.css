@@ -75,17 +75,8 @@
 .lit-query{display:flex;align-items:center;gap:8px;margin:0}
 .research-shell .lit-query input{flex:1;min-width:0}
 .research-shell .lit-query button{flex:none;white-space:nowrap}
-.research-shell .lit-chat-hint{border:0;background:transparent;padding:12px 0;color:#9276ad;font-size:12px}
-.research-shell .lit-chat-hint:hover{color:#6e4b92;text-decoration:underline;text-underline-offset:3px}
+.lit-chat-hint{margin:12px 0 0;color:#9276ad;font-size:12px}
 .lit-search-progress{display:flex;align-items:center;gap:12px;margin-top:16px;color:#a293af;font-size:12px}
-.lit-chat-search .rw-message p{white-space:pre-wrap;overflow-wrap:anywhere}
-.lit-chat-search .lit-results-caption strong{font-size:11px;font-weight:400;line-height:1.8}
-.lit-chat-search .lit-results article{gap:10px;padding:12px 0}
-.lit-chat-search .lit-results article h3{font-size:12px;line-height:1.6}
-.lit-chat-search .lit-results article>button{font-size:10px;padding:5px;gap:3px}
-.lit-chat-search .rw-pagination{flex-wrap:wrap;font-size:11px}
-.lit-chat-search .rw-pagination button{font-size:11px}
-.lit-chat-search .rw-composer .lit-network-toggle{font-size:11px;padding:7px 9px}
 .lit-advanced{padding:4px 0;border-bottom:1px solid #eee9f3;grid-template-columns:repeat(3,minmax(0,1fr))}
 .lit-advanced .rw-field{margin:12px 0}
 .lit-results-caption{display:flex;justify-content:space-between;gap:12px;margin:24px 0 10px;color:#867394;font-size:12px}

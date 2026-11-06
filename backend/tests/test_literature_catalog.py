@@ -3,7 +3,6 @@ from unittest.mock import Mock
 
 import pytest
 import requests
-from app.local_store import encode, now, uid
 
 
 def connect(services, monkeypatch, papers=(), total=None):
@@ -70,25 +69,3 @@ def test_catalog_rejects_nonlocal_or_credentialled_urls(client, services, monkey
     (services['store'].root / 'literature-catalog.json').write_text(json.dumps({'api_url': url}), 'utf-8')
     assert client.get('/api/literature/search').status_code == 400
     get.assert_not_called()
-
-
-def test_chat_search_records_history_and_keeps_projects_separate(client, project, services, monkeypatch):
-    store, codex = services['store'], services['codex']
-    def create(pid, stage, role, context, read_only, web_search):
-        assert read_only and web_search == 'disabled'
-        ident = uid()
-        store.execute('INSERT INTO agent_sessions(id,project_id,role,stage,status,context_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)',
-                      (ident, pid, role, stage, 'running', encode(context), now(), now()))
-        return codex.session(ident)
-    turn = Mock()
-    monkeypatch.setattr(codex, 'create_session', create)
-    monkeypatch.setattr(codex, 'turn', turn)
-    path = f"/api/projects/{project['id']}/literature"
-    response = client.post(path + '/assist', json={'kind': 'search', 'text': '只要近三年', 'history': ['查找图神经网络论文'], 'network': False})
-    assert response.status_code == 202
-    rows = client.get(path + '/searches').json['searches']
-    assert rows[0]['text'] == '只要近三年' and rows[0]['network'] is False
-    assert '查找图神经网络论文' in turn.call_args.args[1]
-    other = client.post('/api/projects', json={'name': 'Other isolated project'}).json['project']['id']
-    assert client.get(f'/api/projects/{other}/literature/searches').json['searches'] == []
-    assert client.post(path + '/assist', json={'kind': 'search', 'text': 'bad', 'history': [{}]}).status_code == 400

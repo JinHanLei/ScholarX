@@ -98,3 +98,11 @@
 验证：`test_literature_catalog.py` 与 `test_literature_list.py` 共 11 项通过，覆盖查询参数、只读访问、仅本地收藏、重复收藏去重、连接失败、配置限制、聊天历史及项目隔离；现有 research-links 单元测试 2 项通过，前端构建通过。浏览器确认紧凑布局、高级聊天提示、检索记录恢复；`graph neural` 查到主库 8,676 篇结果并成功收藏一篇；真实 Codex 查询返回 18 篇相关数据库文献，并成功从聊天收藏一篇，刷新后均保留。预览截图为 `logs/literature-search-database.png` 和 `logs/literature-chat-results.png`。
 
 没有数据库迁移、依赖变更或全局配置变更。未改动主目录及其他组件工作目录。5011 已加载新构建，尚未合入或推送 `main`。本轮未运行全量浏览器套件；移动窄屏样式已适配，但未重新进行设备验收。
+
+## 纠正聊天入口：使用当前 Codex 对话
+
+本节取代上一节关于“文献检索聊天侧栏”的设计。用户所指的聊天是当前 Codex 对话，高级检索只显示“你也可以通过聊天来检索”，没有点击行为，也不会创建应用内检索聊天。数据库检索、网络开关和结果收藏继续保留。
+
+分支 `codex/literature`，合并顺序：先合入 `77d66b9`，移除唯一共享改动 `ResearchWorkbench.jsx` 中新增检索聊天的接线；再合入本记录所在的模块提交，删除 `LiteratureChatSearch.jsx`、对应样式、恢复方法及专用历史接口，并将高级提示改为普通文字。不删除此前的会话数据。自选列表在窗口重新获得焦点或页面重新显示时刷新，便于显示当前 Codex 对话通过本地 API 收藏的文献。现有 API 的检索和收藏方法见 [LITERATURE_CODEX.md](LITERATURE_CODEX.md)。无需新增聊天界面、迁移或依赖。
+
+验证：前端构建通过；`test_literature_catalog.py`、`test_literature_list.py`、`test_library_ui.py` 共 15 项通过，现有 research-links 单元测试 2 项通过。浏览器确认高级检索的提示为文字、页面没有新增文献聊天栏，截图 `logs/literature-codex-chat-hint.png`。本轮没有再次调用真实 Codex 网络检索，也未向项目新增验收文献；焦点刷新逻辑未单独进行跨窗口自动化验收。5011 服务已重启并加载修正，仍使用独立开发数据和已有主库只读连接。未修改其他工作区，尚未合入或推送 `main`。
