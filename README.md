@@ -26,6 +26,11 @@ npm --prefix frontend run build
 
 ## 多组件并行开发
 
+Idea 支持可编辑模型画布、原生可编辑 PPT 导出，以及与 Experiment 共用的版本流程。
+编辑时自动保存草稿，设计完成后点击“保存为版本”才创建正式版本并自动开始实验。
+模型图下方保留设计说明和版本记录；Codex 聊天通过本地接口更新画布。
+接入方式与执行边界见 [Idea 画布说明](docs/IDEA_CANVAS.md)。
+
 Literature、Idea、Experiment、Paper、Review 和个人中心各自使用独立 Git worktree。
 运行 `scripts/setup-worktrees.ps1` 创建目录与分支，运行
 `scripts/start-component.ps1 -Component idea` 启动对应组件的独立开发实例。

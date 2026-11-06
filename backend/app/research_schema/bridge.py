@@ -14,8 +14,11 @@ from .exchange import discover, crate
 
 KINDS={'idea':'Idea','blueprint':'ModelBlueprint','module':'ModelModule','claim':'ResearchClaim','paragraph':'PaperParagraph','figure':'Figure','table':'Table','section':'PaperSection','venue_profile':'VenueProfile','task':'Task'}
 DIRECT=['components','experiments','paper_versions','agent_sessions','reviews','submission_attempts','annotations','paper_library_entries']
+IDEA_TABLES = ['idea_documents', 'idea_versions', 'idea_version_runs', 'idea_version_events', 'idea_research_records']
+DIRECT += IDEA_TABLES
 CHILDREN=[('revisions','component_id','components'),('paragraph_outlines','paragraph_id','components'),('outline_versions','paragraph_id','components'),('component_links','source_id','components'),('evidence_links','claim_id','components'),('paragraph_evolution','parent_id','components'),('experiment_artifacts','experiment_id','experiments'),('agent_messages','session_id','agent_sessions'),('skill_runs','session_id','agent_sessions'),('review_issues','review_id','reviews'),('submission_events','submission_id','submission_attempts')]
 TABLES=['projects','venues','papers',*DIRECT,'revisions','paragraph_outlines','outline_versions','component_links','evidence_links','paragraph_evolution','experiment_artifacts','agent_messages','skill_runs','review_issues','submission_events']
+TABLES = [table for table in TABLES if table not in IDEA_TABLES] + IDEA_TABLES
 def stable(pid,key): return str(uuid5(NAMESPACE_URL,'urn:easyref:'+pid+':'+key))
 
 class ResearchSchemaService:
@@ -70,6 +73,19 @@ class ResearchSchemaService:
                         target=safe_path(root,name); target.parent.mkdir(parents=True,exist_ok=True); shutil.copyfile(candidate,target); row[field]=name
                     else:
                         external.append({'path':name,'reason':'resource outside transferable project or missing'}); row[field]=None if table=='papers' else name
+        # Preserve the implementation corresponding to each model version in portable exports.
+        for version in tables.get('idea_versions', []):
+            if not version.get('workspace'): continue
+            source=safe_path(root,version['workspace'])
+            files=json.loads(version['manifest_json']).get('implementation',{})
+            destination='artifacts/idea-versions/'+version['id']
+            for relative,checksum in files.items():
+                original=safe_path(source,relative)
+                if original.is_file() and sha(original)==checksum:
+                    target=safe_path(root,destination+'/'+relative)
+                    target.parent.mkdir(parents=True,exist_ok=True)
+                    if original!=target: shutil.copy2(original,target)
+            version['workspace']=destination
         tables['projects'][0]['root_path']='.'
         for session in tables['agent_sessions']:
             # Thread IDs are diagnostic only; they are not a transferable process checkpoint.
@@ -104,11 +120,17 @@ class ResearchSchemaService:
             if kind=='Idea': payload={**data,'statement':data.get('proposed_method') or data.get('statement') or row['name']}
             elif kind=='ModelBlueprint':
                 modules=[]
+                module_ids={}
                 for module in data.get('modules',[]):
-                    mid=module['id']; modules.append(mid)
+                    mid=module['id']
+                    try: UUID(mid)
+                    except ValueError: mid=stable(pid,'module:'+row['id']+':'+mid)
+                    module_ids[module['id']]=mid
+                    modules.append(mid)
                     add('ModelModule',mid,module.get('name',mid),{'purpose':module.get('purpose','unknown'),'code_refs':[module['code_path']] if module.get('code_path') else []})
                     edge('belongs_to',mid,row['id'])
                 payload={**data,'modules':modules,'design_goal':data.get('design_goal') or row['name'],'edges':data.get('edges',[]),'code_refs':[data['code_entry']] if data.get('code_entry') else [],'history':[r['id'] for r in tables['revisions'] if r['component_id']==row['id']],'decisions':[]}
+                payload['edges']=[{**item,'source':module_ids.get(item['source'],item['source']),'target':module_ids.get(item['target'],item['target'])} for item in payload['edges']]
             elif kind=='ModelModule': payload={**data,'purpose':data.get('purpose','unknown'),'code_refs':data.get('code_refs',[])}
             elif kind=='ResearchClaim': payload={**data,'statement':data.get('statement') or row['name'],'evidence':[r['id'] for r in tables['evidence_links'] if r['claim_id']==row['id']]}
             elif kind=='PaperParagraph': payload={**data,'source_path':data.get('path','paper/main.tex'),'anchor':row['id'],'claims':data.get('claims',[])}
@@ -199,6 +221,9 @@ class ResearchSchemaService:
                 if row['status'] in {'running','pending'}: row['status']='interrupted'
             for row in tables.get('experiments',[]):
                 if row['status'] in {'running','queued'}: row['status']='interrupted'
+            for row in tables.get('idea_versions',[]):
+                if row['stage'] not in {'completed','blocked','failed','cancelled','interrupted','imported'}:
+                    row['stage']='interrupted'; row['message']='导入的版本保留历史；运行进程不能迁移'
             with self.store.transaction() as conn:
                 conn.execute('PRAGMA defer_foreign_keys=ON')
                 for table in TABLES:

@@ -1,0 +1,52 @@
+.idea-workspace .idea-heading{margin:3px 0 15px}
+.idea-workspace .idea-heading h1{margin:0;font-size:23px}
+.idea-workspace .idea-document-toolbar{margin-bottom:10px}
+.idea-model-preview{border:1px solid #dce5f1;border-radius:11px;background:#fff;overflow:hidden}
+.idea-model-preview>header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 17px;border-bottom:1px solid #f0f3f8}
+.idea-model-preview>header>div{display:flex;align-items:center;gap:9px;color:#7e94b1;min-width:0}
+.idea-model-preview h2{font-size:13px;font-weight:600;color:#40526c;margin:0}
+.idea-model-preview>header small{font-size:10px;color:#94a4ba;margin-left:5px}
+.idea-model-preview>header>button{padding:6px 10px;color:#3978d5;background:#f6f9ff;border-color:#dfe9fa}
+.idea-preview-viewport{max-height:310px;overflow:auto;overscroll-behavior:contain;padding:10px;scrollbar-width:thin}
+.idea-preview-diagram{display:block;max-width:100%;height:auto;margin:0 auto;overflow:visible}
+.idea-workspace button.idea-preview-node{box-sizing:border-box;display:flex;flex-direction:column;align-items:stretch;justify-content:center;gap:3px;width:calc(100% - 4px);height:calc(100% - 4px);margin:2px;padding:7px 13px;text-align:left;border:1px solid color-mix(in srgb,var(--node-color) 24%,white);border-left:3px solid var(--node-color);border-radius:8px;background:var(--node-fill);white-space:normal;overflow:hidden}
+.idea-workspace button.idea-preview-node:hover,.idea-workspace button.idea-preview-node.selected{border-color:var(--node-color);box-shadow:0 2px 7px #193b6512}
+.idea-workspace button.idea-preview-node:focus-visible{outline:2px solid #3978e8;outline-offset:-2px}
+.idea-preview-node>small{display:flex;justify-content:space-between;font-size:9px;color:var(--node-color);line-height:1.2}
+.idea-preview-node>strong{font-size:13px;font-weight:600;line-height:1.4;color:#2d4563;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.idea-preview-node .idea-preview-output{font-size:10px;line-height:1.4;color:#7c8ea7;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.idea-preview-node.added{border-style:dashed!important}.idea-preview-node.modified{border-bottom-color:#dfa346!important}
+.idea-preview-edge-label{fill:#7b90ac;stroke:#fff;stroke-width:4px;paint-order:stroke;font-size:10px}
+.idea-preview-empty{display:flex;align-items:center;justify-content:center;gap:16px;min-height:130px;padding:24px;color:#7e9bc5}
+.idea-preview-empty strong{font-size:13px;color:#597493;font-weight:500}.idea-preview-empty p{font-size:11px;color:#94a4b9;margin:6px 0 0}
+.idea-preview-details{padding:12px 18px 15px;border-top:1px solid #eaf0f7;background:#fbfcff}
+.idea-preview-details>header{display:flex;align-items:center;justify-content:space-between;gap:12px}.idea-preview-details header>strong{font-size:12px;color:#455f82}.idea-preview-details header>div{display:flex;gap:7px}.idea-preview-details header button{padding:4px 6px;font-size:10px;border:0;background:transparent}
+.idea-preview-details dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 26px;margin:12px 0 0}.idea-preview-details dl>div{min-width:0}.idea-preview-details dl>div:first-child{grid-column:1/-1}.idea-preview-details dt{font-size:10px;color:#93a4bb;margin-bottom:3px}.idea-preview-details dd{font-size:11px;line-height:1.7;color:#5b718e;margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.idea-preview-details>p{font-size:11px;color:#93a4b9}
+.idea-workspace .idea-canvas-footnote{margin:7px 2px 12px}.idea-workspace .idea-canvas-footnote>span{font-size:10px;letter-spacing:0}
+.idea-workspace .idea-notes,.idea-workspace .idea-history{margin-top:12px;padding:13px 17px}
+.idea-workspace .idea-notes>header,.idea-workspace .idea-history>header{margin-bottom:10px}
+.idea-workspace .idea-notes h2,.idea-workspace .idea-history h2{font-size:13px}
+.idea-notes-actions .rotated{transform:rotate(180deg)}
+.idea-notes-excerpts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:12px 24px}
+.idea-notes-excerpts>div{min-width:0}.idea-notes-excerpts h3{font-size:10px;font-weight:500;color:#8b9bb1;margin:0 0 5px}
+.idea-excerpt-text{font-size:11px;color:#61758f;line-height:1.8;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;overflow-wrap:anywhere}
+.idea-excerpt-text p{margin:0}.idea-excerpt-text ul,.idea-excerpt-text ol{margin:0;padding-left:17px}.idea-excerpt-text pre{white-space:pre-wrap;margin:0}.idea-excerpt-text table{width:100%;font-size:10px}
+.idea-workspace .idea-version-row{padding:10px 0;gap:12px}.idea-workspace .idea-version-row:last-of-type{padding-bottom:0}
+.idea-workspace .idea-version-copy strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.5}.idea-workspace .idea-version-copy small{display:block;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#98a8bd}
+.idea-workspace .idea-history-more{display:flex;margin:11px auto 0;border:0;background:transparent;padding:4px 8px;font-size:10px;color:#8197b3}
+.idea-workspace .idea-model-dialog.wide{width:min(1400px,calc(100vw - 48px));max-height:calc(100dvh - 40px);border-color:#e0e7f1}
+.idea-model-dialog .rw-dialog-heading{padding:17px 22px 14px}.idea-model-dialog .rw-modal-body{padding:14px 20px 20px}
+.idea-editor-actions{display:flex;align-items:center;gap:7px;margin-bottom:12px}.idea-editor-actions .idea-save-state{margin-left:5px}.idea-editor-actions .idea-primary{margin-left:auto;padding:8px 13px}
+.idea-model-dialog .idea-canvas{height:clamp(320px,calc(100dvh - 315px),680px)}
+.idea-model-dialog .idea-error{margin-bottom:10px}
+@media(max-width:700px){
+  .idea-workspace .idea-heading{margin-bottom:12px}.idea-workspace .idea-heading h1{font-size:21px}
+  .idea-model-preview>header{padding:11px 12px}.idea-model-preview>header small{display:none}
+  .idea-preview-viewport{padding:8px 3px}.idea-preview-empty{padding:20px 13px;gap:9px;flex-wrap:wrap}
+  .idea-preview-details{padding:12px}.idea-preview-details dl{grid-template-columns:1fr;gap:9px}
+  .idea-workspace .idea-notes,.idea-workspace .idea-history{padding:12px}.idea-notes header>div{gap:5px}.idea-notes-actions{gap:3px!important}
+  .idea-workspace .idea-version-row{gap:8px}.idea-workspace .idea-version-copy small{font-size:8px}
+  .idea-workspace .idea-model-dialog.wide{width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
+  .idea-model-dialog .rw-dialog-heading{padding:14px}.idea-model-dialog .rw-dialog-heading p{max-width:260px;line-height:1.6}
+  .idea-model-dialog .rw-modal-body{padding:10px}.idea-editor-actions{flex-wrap:wrap;gap:5px}.idea-editor-actions button{padding:7px 8px}.idea-editor-actions .idea-save-state{font-size:9px;margin:0}
+}

@@ -55,6 +55,28 @@ because a shared file is needed.
 
 ## Runtime and verification
 
+- For research-content requests such as drawing/changing the user's backbone,
+  use the live Idea API/`backend/scripts/idea_canvas.py` described in
+  `docs/IDEA_CANVAS.md`. First read the active context at the correct instance
+  (Idea development: port 5012), verify the project, then read the current
+  document/revision. Read `/api/idea-context` directly; do not ask the user to
+  copy model content or project/Idea IDs into the chat. Preserve stable node IDs and user layout. Save model edits
+  as drafts only. The user clicks “保存为版本” to create the shared Idea/Experiment
+  version and start execution. Do not call the publish endpoint or CLI command
+  unless the user explicitly requests version submission; editing alone is not authorization.
+  Never substitute edits to application source, SQLite, or research export files
+  for updating the user's model canvas.
+
+  When a research discussion settles a change, record one decision through
+  `POST /api/projects/<pid>/ideas/<id>/records` (or CLI `record`), atomically with
+  the complete document and expected revision. Include a stable UUID, title,
+  change, reason and expected validation; reuse the UUID on network retries.
+  Author `document.figure` as a paper-style vector figure, not draggable cards.
+  Preserve prior records; after results are discussed, append a conclusion
+  referencing the exact version and experiment IDs. Read metrics from the runs.
+  Do not log every chat message or unrelated application-development work as
+  a research decision. The active-context endpoint supplies this workflow too.
+
 - Use `scripts/start-component.ps1 -Component <name>` for isolated ports and
   `.easyref` data. Never point concurrent services at the same SQLite/project
   directory. Never copy the user's live database as an automatic setup step.
