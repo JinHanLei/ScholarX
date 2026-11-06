@@ -1,6 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Play, Square, Plus, GitCompareArrows, Save } from 'lucide-react';
 import { request, Field, JsonField, Badge, Empty, VersionHistory, pretty, short, stamp } from './shared.jsx';
+import useIdeaVersions from './idea/useIdeaVersions.js';
+import IdeaExperimentPanel from './idea/IdeaExperimentPanel.jsx';
+
+export default function ExperimentWorkspace(props) {
+  const { versions, error } = useIdeaVersions(props.project.id);
+  const [legacy, setLegacy] = useState(false);
+  return <>{error && <p role="alert" className="rw-error">{error}</p>}{versions.length > 0 && !legacy ? <><IdeaExperimentPanel versions={versions} selectedVersion={props.ideaVersion} onIdea={props.onIdea} /><button style={{ marginTop: 15 }} onClick={() => setLegacy(true)}>查看原有独立实验</button></> : <>{versions.length > 0 && <button onClick={() => setLegacy(false)}>返回统一版本实验</button>}<LegacyExperimentWorkspace {...props} /></>}</>;
+}
 
 function Architecture({ modules, edges, onSelect }) {
   const width = 660; const cols = 3; const height = Math.max(110, Math.ceil(modules.length / cols) * 110);
@@ -8,7 +16,7 @@ function Architecture({ modules, edges, onSelect }) {
   return <svg className="rw-architecture" viewBox={`0 0 ${width} ${height}`} aria-label="Blueprint 模块架构图"><defs><marker id="rw-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#8c91af" /></marker></defs>{edges.map((e, i) => { const a = position(e.source); const b = position(e.target); return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#8c91af" strokeWidth="2" markerEnd="url(#rw-arrow)" />; })}{modules.map((m) => { const p = position(m.id); return <g key={m.id} tabIndex={0} role="button" aria-label={m.name} onClick={() => onSelect(m)} onKeyDown={(e) => { if (e.key === 'Enter') onSelect(m); }}><rect x={p.x - 84} y={p.y - 29} width="168" height="58" rx="8" fill="#f6f4ff" stroke="#b6a6eb" /><text x={p.x} y={p.y - 2} textAnchor="middle" fontSize="13" fill="#343057">{(m.name || 'Module').slice(0, 21)}</text><text x={p.x} y={p.y + 17} textAnchor="middle" fontSize="10" fill="#77718a">{short(m.id)}</text></g>; })}</svg>;
 }
 const emptyConfig = { dataset: '', split: '', seed: 0, hyperparameters: {}, evaluation_protocol: '', changed_modules: [], changed_files: [] };
-export default function ExperimentWorkspace({ project, act, select, selection, epoch }) {
+function LegacyExperimentWorkspace({ project, act, select, selection, epoch }) {
   const [blueprints, setBlueprints] = useState([]); const [bp, setBp] = useState(null); const [bpName, setBpName] = useState(''); const [design, setDesign] = useState({ markdown: '', modules: [], edges: [], code_entry: '' });
   const [runs, setRuns] = useState([]); const [chosen, setChosen] = useState(null); const [detail, setDetail] = useState(null); const [comparison, setComparison] = useState(null); const [pair, setPair] = useState(['', '']);
   const [name, setName] = useState(''); const [command, setCommand] = useState(['python', 'experiment.py']); const [config, setConfig] = useState(emptyConfig); const [purpose, setPurpose] = useState(''); const [parent, setParent] = useState(''); const [cwd, setCwd] = useState('.'); const [metricsPath, setMetricsPath] = useState('metrics.json'); const [testData, setTestData] = useState(false);

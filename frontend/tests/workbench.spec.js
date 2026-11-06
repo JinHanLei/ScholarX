@@ -27,16 +27,10 @@ test('five workspaces, actual persistence, anchored outlines and PDF rendering',
   await expect(page.locator('.rw-topbar')).toContainText(name);
   const pid = (await (await request.get('/api/projects')).json()).projects.find((project) => project.name === name).id;
   await page.getByRole('button', { name: 'Idea 研究问题与构想' }).click();
-  await page.getByLabel('研究问题', { exact: true }).fill('Can stable research objects survive editing?');
-  await page.getByLabel('目标期刊或会议', { exact: true }).fill('TKDE');
-  await page.getByRole('button', { name: '保存研究起点', exact: true }).click();
-  await expect(page.getByRole('button', { name: '保存研究起点', exact: true })).toBeDisabled();
-  await page.getByLabel('Idea 名称').fill('UI test hypothesis');
-  await page.getByLabel('Research Question · 研究问题').fill('Can stable IDs survive a text change?');
-  await page.getByLabel('Proposed Method · 方法设计').fill('Compare the paragraph ID before and after editing.');
-  await page.getByRole('button', { name: '保存 Idea', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Idea 已保存' })).toBeVisible();
-  const idea = (await (await request.get(`/api/projects/${pid}/components?kind=idea`)).json()).components.find((c) => c.name === 'UI test hypothesis');
+  // Legacy proposal/blueprint compatibility remains covered here; the model canvas has its own suite.
+  await request.put(`/api/projects/${pid}/research-brief`, { data: { research_question: 'Can stable research objects survive editing?', target_venue: 'TKDE' } });
+  const idea = (await (await request.post(`/api/projects/${pid}/components`, { data: { kind: 'idea', name: 'UI test hypothesis', data: { proposed_method: 'Compare stable IDs' } } })).json()).component;
+  await page.getByRole('button', { name: 'Experiment 模型与实验' }).click();
   const project = (await (await request.get(`/api/projects/${pid}`)).json()).project;
   const proposalsPath = path.join(project.root_path, '.easyref', 'proposals');
   await mkdir(proposalsPath, { recursive: true });
@@ -46,9 +40,10 @@ test('five workspaces, actual persistence, anchored outlines and PDF rendering',
   await page.locator('.rw-proposals summary').click();
   await expect(page.locator('.rw-proposals')).toContainText('A reviewed TEST proposal');
   await page.getByRole('button', { name: '采纳差异并保存新修订' }).click();
-  await expect(page.getByLabel('Hypothesis · 可检验假设')).toHaveValue('A reviewed TEST proposal');
-  await page.getByRole('button', { name: '生成初始 Blueprint' }).click();
-  await expect(page.getByRole('status').filter({ hasText: '已创建 Blueprint' })).toBeVisible();
+  await expect.poll(async () => (await (await request.get(`/api/components/${idea.id}`)).json()).component.data.hypothesis).toBe('A reviewed TEST proposal');
+  await request.post(`/api/ideas/${idea.id}/blueprint`, { data: {} });
+  await page.getByTitle('折叠 Codex Assistant').click();
+  await page.getByRole('button', { name: 'Idea 研究问题与构想' }).click();
   await page.getByRole('button', { name: 'Experiment 模型与实验' }).click();
   await expect(page.locator('.rw-blueprint')).toContainText('Model Blueprint');
   await page.getByText('编辑架构、模块与连接', { exact: true }).click();
@@ -131,7 +126,7 @@ test('Codex panel layout fits narrow width with genuine workflow progress', asyn
   await expect(page.locator('.rw-progress-step.running')).toContainText('Idea');
   await expect(page.locator('.rw-progress-step.pending')).toHaveCount(3);
   await page.getByRole('button', { name: 'Idea 研究问题与构想', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '研究问题与构想', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '模型构想Idea', exact: true })).toBeVisible();
   await expect(page.locator('.rw-progress-step.running')).toContainText('Idea');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   const footer = await page.locator('.rw-progress').boundingBox();

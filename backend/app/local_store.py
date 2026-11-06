@@ -162,6 +162,8 @@ class Store:
             old = row_decode(conn.execute('SELECT * FROM components WHERE id=?', (component_id,)).fetchone())
             if old and (old['project_id'] != project_id or old['kind'] != kind):
                 raise ValueError('组件身份不能改变')
+            if old and old['data'].get('idea_workspace'):
+                raise ValueError('此模型由 Idea 统一版本管理，请通过模型画布或 Idea API 修改')
             if old and old['status']=='absent_in_branch': raise ValueError('不能修改其他分支的组件')
             if old and expected_revision != old['revision_id']:
                 raise ValueError('版本已变化，请刷新后再保存，避免覆盖其他修改')

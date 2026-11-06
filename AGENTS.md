@@ -44,6 +44,15 @@ because a shared file is needed.
 
 ## Runtime and verification
 
+- For research-content requests such as drawing/changing the user's backbone,
+  use the live Idea API/`backend/scripts/idea_canvas.py` described in
+  `docs/IDEA_CANVAS.md`. First read the active context at the correct instance
+  (Idea development: port 5012), verify the project, then read the current
+  document/revision. Preserve stable node IDs and user layout. Saving a semantic
+  change automatically versions and executes it; do not add another sync approval.
+  Never substitute edits to application source, SQLite, or research export files
+  for updating the user's model canvas.
+
 - Use `scripts/start-component.ps1 -Component <name>` for isolated ports and
   `.easyref` data. Never point concurrent services at the same SQLite/project
   directory. Never copy the user's live database as an automatic setup step.

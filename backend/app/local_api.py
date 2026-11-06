@@ -470,6 +470,8 @@ def configure_local(app):
     app.register_blueprint(api,url_prefix='/api')
     from .local_library import register_library_api
     register_library_api(app,store,literature,codex)
+    from .local_ideas import register_idea_api
+    register_idea_api(app,store,codex,experiments)
     from .research_schema.api import register_schema_api
     register_schema_api(app,store,codex)
     dist=Path(__file__).resolve().parents[2]/'frontend'/'dist'
