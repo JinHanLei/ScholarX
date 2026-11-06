@@ -138,9 +138,10 @@
 .lit-collection .lit-library-footer{padding-top:10px;padding-bottom:10px}
 .lit-archive-modal.wide{height:min(620px,calc(100dvh - 40px))}
 .lit-archive-modal .rw-modal-body{display:flex;padding:0;overflow:hidden;flex:1}
-.lit-search-scope{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;font-size:11px;color:#a08eae}
-.research-shell .lit-search-scope label{display:flex;flex-direction:row;align-items:center;gap:7px;margin:0;color:#8a70a5;cursor:pointer}
-.lit-search-scope input{accent-color:#9672c0}
+.research-shell .lit-network-toggle{display:inline-flex;align-items:center;gap:7px;flex:none;padding:8px 12px;border:1px solid #e5ddeb;border-radius:8px;background:#faf8fc;color:#9a88aa;font-size:12px;white-space:nowrap;transition:background .15s,border-color .15s,color .15s}
+.research-shell .lit-network-toggle:hover{background:#f3edf9;border-color:#cdb9e2;color:#81609e}
+.research-shell .lit-network-toggle[aria-pressed=true]{background:#ede3fa;border-color:#b799d6;color:#79529e}
+.research-shell .lit-network-toggle:focus-visible{outline:2px solid #b799d6;outline-offset:2px}
 .lit-source-badge{display:inline-block;padding:1px 5px;margin-right:8px;border-radius:4px;background:#f2ecf8;font-size:9px;color:#9b7cb4}
 .lit-results h3 a{color:inherit;text-decoration:none}.lit-results h3 a:hover{text-decoration:underline}
 .lit-pdf-add-modal{width:min(430px,calc(100vw - 24px))}
@@ -150,5 +151,5 @@
 .research-shell .lit-pdf-choices button{height:88px;display:flex;flex-direction:column;justify-content:center;gap:10px;border:1px solid #e9dff3;background:#fcfaff;color:#9574b1;font-size:12px;border-radius:10px}
 .research-shell .lit-pdf-choices button:hover{background:#f4ecfc;border-color:#d9c5ee}
 .lit-pdf-progress{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:18px;font-size:11px;color:#967eab}
-@media(max-width:760px){.lit-collection .lit-paper-scroll{padding:0 16px}.lit-table .lit-paper-row{display:table-row}.lit-table td{height:47px}.lit-search-scope{align-items:flex-start;flex-wrap:wrap}.lit-collection .lit-library-footer{align-items:flex-start;flex-wrap:wrap}}
+@media(max-width:760px){.lit-collection .lit-paper-scroll{padding:0 16px}.lit-table .lit-paper-row{display:table-row}.lit-table td{height:47px}.lit-collection .lit-library-footer{align-items:flex-start;flex-wrap:wrap}}
 @media(hover:none){.research-shell .lit-table .lit-pin-button{opacity:1}}
