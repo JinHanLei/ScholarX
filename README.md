@@ -24,6 +24,13 @@ npm --prefix frontend run build
 .\.venv\Scripts\python.exe backend/scripts/smoke_codex.py --review
 ```
 
+## 多组件并行开发
+
+Literature、Idea、Experiment、Paper、Review 和个人中心各自使用独立 Git worktree。
+运行 `scripts/setup-worktrees.ps1` 创建目录与分支，运行
+`scripts/start-component.ps1 -Component idea` 启动对应组件的独立开发实例。
+端口、数据隔离、AI 任务目录和合并流程见 [并行开发说明](docs/PARALLEL_DEVELOPMENT.md)。
+
 ## 旧部署说明（兼容保留）
 
 以下是原有 Supabase 部署与功能文档。仅需继续运行旧部署时设置 `EASYREF_STORAGE=supabase`，并在前端构建时设置 `VITE_EASYREF_LEGACY=true`；其依赖仍见 `backend/requirements.txt`。本地模式不加载这些云端 SDK 或 API-Key Agent。原有数据不会被自动删除或覆盖。

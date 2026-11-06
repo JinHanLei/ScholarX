@@ -1,0 +1,10 @@
+{
+  "components": [
+    { "name": "literature", "branch": "codex/literature", "backendPort": 5011, "frontendPort": 5191 },
+    { "name": "idea", "branch": "codex/idea", "backendPort": 5012, "frontendPort": 5192 },
+    { "name": "experiment", "branch": "codex/experiment", "backendPort": 5013, "frontendPort": 5193 },
+    { "name": "paper", "branch": "codex/paper", "backendPort": 5014, "frontendPort": 5194 },
+    { "name": "review", "branch": "codex/review", "backendPort": 5015, "frontendPort": 5195 },
+    { "name": "profile", "branch": "codex/profile", "backendPort": 5016, "frontendPort": 5196 }
+  ]
+}
