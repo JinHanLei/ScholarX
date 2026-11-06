@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { ArrowLeft, Upload, Languages, Download, Square, NotebookPen, X } from 'lucide-react';
 import { PdfJsViewer } from '../PdfViewer.jsx';
 import LiteraturePdfDialog from './LiteraturePdfDialog.jsx';
-import useLiteratureAssist from './useLiteratureAssist.js';
+import useLiteratureTranslation from './useLiteratureTranslation.js';
 import { request, Field } from './shared.jsx';
 import { downloadApiFile } from '../../utils/api.js';
 
@@ -32,7 +32,7 @@ function SelectionPopup({ anchor, stage, children, onClose }) {
   </section>;
 }
 
-export default function LiteratureReader({ paper, project, onClose, onChanged, openSession }) {
+export default function LiteratureReader({ paper, project, onClose, onChanged, openSession, onOpenApiSettings }) {
   const [hasPdf, setHasPdf] = useState(Boolean(paper.pdf_path));
   const [version, setVersion] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -49,7 +49,7 @@ export default function LiteratureReader({ paper, project, onClose, onChanged, o
   const stage = useRef(null);
   const backButton = useRef(null);
   const selecting = useRef(false);
-  const assist = useLiteratureAssist(project, 'translate');
+  const assist = useLiteratureTranslation(paper.id);
 
   useEffect(() => { backButton.current?.focus(); }, []);
 
@@ -103,7 +103,7 @@ export default function LiteratureReader({ paper, project, onClose, onChanged, o
   useEffect(() => {
     if ((!anchor && !notesOpen) || attachments) return undefined;
     const escape = (event) => {
-      if (event.key !== 'Escape') return;
+      if (event.key !== 'Escape' || document.querySelector('dialog[open]')) return;
       event.preventDefault(); event.stopPropagation(); dismissTranslation(); setNotesOpen(false);
     };
     document.addEventListener('keydown', escape, true);
@@ -136,14 +136,14 @@ export default function LiteratureReader({ paper, project, onClose, onChanged, o
       {anchor && <SelectionPopup anchor={anchor} stage={stage} onClose={dismissTranslation}>
         <blockquote className="lit-selection-quote">{quote}</blockquote>
         <div className="rw-toolbar">
-          <button type="button" className="rw-primary" disabled={!project || !quote.trim() || assist.busy} onClick={() => assist.start(quote, { paper_id: paper.id })}><Languages size={14} />{assist.busy ? (currentTranslation ? '正在翻译…' : '正在翻译上一段…') : 'Codex 翻译'}</button>
-          {assist.busy && <button type="button" disabled={!assist.task?.session_id} onClick={assist.stop}><Square size={13} />停止</button>}
+          {assist.settings?.has_key ? <button type="button" className="rw-primary" disabled={!quote.trim() || assist.busy} onClick={() => assist.start(quote)}><Languages size={14} />{assist.busy ? (currentTranslation ? '正在翻译…' : '正在翻译上一段…') : 'OpenAI 翻译'}</button> : <button type="button" className="rw-primary" onClick={() => { dismissTranslation(); onOpenApiSettings(); }}>配置翻译 API</button>}
+          {assist.busy && <button type="button" onClick={assist.stop}><Square size={13} />停止</button>}
           <button type="button" className="rw-icon" aria-label="为选文添加笔记" title="添加笔记" onClick={showNotes}><NotebookPen size={15} /></button>
         </div>
-        {assist.task?.notice && <p className="rw-warning" role="status">{assist.task.notice}</p>}
+        {!assist.settings?.has_key && <p className="rw-muted">点击左上角 EasyRef Logo 填写 API Key 后即可翻译。</p>}
+        {assist.settingsError && <p className="rw-error" role="alert">{assist.settingsError}</p>}
         {currentTranslation && assist.error && <p className="rw-error" role="alert">{assist.error}</p>}
-        {assist.task?.status === 'waiting_approval' && <button onClick={() => openSession(assist.task.session_id)}>查看 Codex 授权请求</button>}
-        {currentTranslation && assist.task?.output?.translation && <div className="lit-translation-output" aria-live="polite"><small>中文译文</small><p>{assist.task.output.translation}</p></div>}
+        {currentTranslation && assist.translation && <div className="lit-translation-output" aria-live="polite"><small>中文译文</small><p>{assist.translation}</p></div>}
       </SelectionPopup>}
       {notesOpen && <section className="lit-reader-notes" role="dialog" aria-label="摘录与笔记">
         <header><strong>摘录与笔记 · {annotations.length}</strong><button type="button" className="rw-icon" aria-label="关闭笔记" onClick={() => setNotesOpen(false)}><X size={15} /></button></header>

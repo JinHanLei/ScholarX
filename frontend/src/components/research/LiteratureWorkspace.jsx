@@ -9,7 +9,7 @@ import LiteraturePdfDialog from './LiteraturePdfDialog.jsx';
 import LiteratureUpdate from './LiteratureUpdate.jsx';
 import './literature.css';
 
-export default function LiteratureWorkspace({ project, select, epoch }) {
+export default function LiteratureWorkspace({ project, select, epoch, onOpenApiSettings }) {
   const [query, setQuery] = useState('');
   const [modal, setModal] = useState(null);
   const [selected, setSelected] = useState(null);
@@ -42,7 +42,7 @@ export default function LiteratureWorkspace({ project, select, epoch }) {
     {modal === 'archive' && <ResearchModal title="已归档论文" subtitle="保留 PDF 与阅读记录，可随时恢复到自选。" wide className="lit-archive-modal" onClose={() => setModal(null)}><LiteratureCollection project={project} archived epoch={epoch + ':' + revision} onChanged={changed} onPdf={openPdf} /></ResearchModal>}
     {['keyword', 'advanced', 'natural'].includes(modal) && <LiteratureSearch mode={modal} initialQuery={query} project={project} onClose={() => setModal(null)} onAdded={changed} openSession={openSession} />}
     {modal === 'update' && <LiteratureUpdate onClose={() => setModal(null)} />}
-    {selected && (selected.pdf_path ? <LiteratureReader key={selected.id} paper={selected} project={project} onClose={closeReader} onChanged={changed} openSession={openSession} /> : <LiteraturePdfDialog key={selected.id} paper={selected} project={project} onClose={() => setSelected(null)} onSaved={changed} openSession={openSession} />)}
+    {selected && (selected.pdf_path ? <LiteratureReader key={selected.id} paper={selected} project={project} onClose={closeReader} onChanged={changed} openSession={openSession} onOpenApiSettings={onOpenApiSettings} /> : <LiteraturePdfDialog key={selected.id} paper={selected} project={project} onClose={() => setSelected(null)} onSaved={changed} openSession={openSession} />)}
     {modal === 'manual' && <ResearchModal title="添加文献" onClose={() => setModal(null)}><form onSubmit={addManual}>{[['title', '标题'], ['authors', '作者（逗号分隔）'], ['year', '年份'], ['venue_name', '期刊 / 会议名称'], ['doi', 'DOI（可选）'], ['url', '文章 URL（可选）']].map(([key, label]) => <Field key={key} label={label}><input required={key === 'title'} type={key === 'year' ? 'number' : key === 'url' ? 'url' : 'text'} value={manual[key]} onChange={(e) => setManual({ ...manual, [key]: e.target.value })} /></Field>)}{error && <p className="rw-dialog-error" role="alert">{error}</p>}<button type="submit" className="rw-primary" disabled={!manual.title.trim() || busy}>加入自选</button></form></ResearchModal>}
   </div>;
 }

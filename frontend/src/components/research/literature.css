@@ -1,4 +1,19 @@
 /* Literature: the collection is the workspace, tools stay around its edges. */
+.research-shell .lit-api-logo{padding:0;border:0;background:transparent;min-height:0;color:inherit;flex:none}
+.research-shell .lit-api-logo:hover{background:transparent;color:#7155c6}
+.research-shell .lit-api-logo:focus-visible{outline:2px solid #b799d6;outline-offset:5px}
+.lit-api-settings{width:min(460px,calc(100vw - 24px))}
+.lit-api-settings .rw-dialog-heading{padding-bottom:16px}
+.lit-api-status{display:flex;align-items:center;gap:9px;padding:10px 12px;background:#f8f5fc;border:1px solid #eee7f5;border-radius:8px;color:#9274ae;font-size:11px;margin-bottom:18px}
+.lit-api-status small{margin-left:auto;font-size:10px;color:#aa96bc}
+.lit-api-secret{position:relative}
+.research-shell .lit-api-secret input{padding-right:42px}
+.lit-api-secret .rw-icon{position:absolute;right:4px;top:2px;background:transparent;border:0;color:#a18daf}
+.lit-api-settings .rw-field small{line-height:1.7;font-size:10px;color:#a397ad}
+.lit-api-hint{display:flex;align-items:flex-start;gap:7px;font-size:11px;line-height:1.7;color:#9a8ca6;margin:6px 0 20px!important}
+.lit-api-hint svg{flex:none;margin-top:2px}
+.lit-api-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:22px;padding-top:16px;border-top:1px solid #eee8f3}
+.research-shell .lit-api-remove{margin-right:auto;border:0;background:transparent;color:#a28daa;padding-left:0}
 .research-shell .lit-content{padding:0;display:flex;overflow:hidden}
 .lit-workspace{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;background:#fff}
 .research-shell:has(.lit-workspace>.lit-reader){grid-template-rows:auto minmax(0,1fr)}
