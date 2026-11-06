@@ -1,5 +1,6 @@
 import PptxGenJS from 'pptxgenjs';
 import { graphBounds, KINDS, NODE_WIDTH, NODE_HEIGHT } from './ideaGraph.js';
+import { addPaperFigure } from './paperFigure.js';
 
 export function buildPresentation(document, version) {
   const pptx = new PptxGenJS();
@@ -7,9 +8,12 @@ export function buildPresentation(document, version) {
   pptx.author = 'EasyRef'; pptx.subject = 'Versioned model architecture'; pptx.title = document.name;
   pptx.lang = 'zh-CN';
   pptx.theme = { headFontFace: 'Microsoft YaHei', bodyFontFace: 'Microsoft YaHei', lang: 'zh-CN' };
-  const slide = pptx.addSlide(); slide.background = { color: 'F8FAFD' };
+  const slide = pptx.addSlide(); slide.background = { color: document.figure ? 'FFFFFF' : 'F8FAFD' };
   slide.addText(document.name, { x: .5, y: .3, w: 11.5, h: .45, fontSize: 23, bold: true, color: '22324B' });
   slide.addText(version ? `V${version}` : 'DRAFT', { x: 11.6, y: .35, w: 1.1, h: .3, fontSize: 13, color: '3978E8', align: 'right' });
+  if (document.figure) {
+    addPaperFigure(slide, pptx, document.figure);
+  } else {
   const bounds = graphBounds(document.graph);
   const scale = Math.min(12 / bounds.width, 5.7 / bounds.height);
   if (NODE_WIDTH * scale < .35) throw new Error('模型布局过大，请先自动排版或缩小模块间距再导出');
@@ -34,8 +38,9 @@ export function buildPresentation(document, version) {
     const caption = node.outputs || node.description;
     if (caption) slide.addText(caption.slice(0, 100), { x: p.x + .1, y: p.y + p.h * .67, w: p.w - .2, h: p.h * .23, fontSize: Math.min(10, p.w * 4.7), color: '64748B', margin: 0, fit: 'shrink' });
   }
+  }
   slide.addNotes(document.description || '');
-  slide.addText('EasyRef · Model design', { x: .5, y: 7.05, w: 11, h: .2, fontSize: 9, color: '94A3B8' });
+  slide.addText(document.figure?.caption || 'EasyRef · Model design', { x: .5, y: 6.95, w: 12.3, h: .4, fontSize: 9, color: '64748B', margin: 0 });
   if (document.description) {
     // Bound text per slide so long design notes remain editable and readable.
     const chunks = document.description.match(/[\s\S]{1,1100}/g) || [];

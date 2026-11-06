@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import { layoutGraph, previewGraph, semanticGraph, changedNodes } from '../src/components/research/idea/ideaGraph.js';
 import { buildPresentation } from '../src/components/research/idea/ideaExport.js';
+import { figureSvg } from '../src/components/research/idea/paperFigure.js';
+import { paperDocument } from '../tests/fixtures/idea-paper.js';
 
 const document = { name: 'TEST DATA · 可编辑模型', description: 'This is an export acceptance fixture.', graph: {
   nodes: [{ id: 'input', label: '输入序列', kind: 'input', description: '', inputs: '', outputs: 'B × T × D', parameters: '', position: { x: 0, y: 0 } },
@@ -59,4 +61,20 @@ test('narrow previews fold a pipeline without inventing connections to an isolat
   assert.ok(preview.nodes[3].position.y > preview.nodes[2].position.y);
   assert.deepEqual(preview.edges.map(({ id, source, target }) => ({ id, source, target })), graph.edges);
   assert.deepEqual(graph, original);
+});
+test('paper figures export native editable groups, text, ellipses and every arrow segment', async () => {
+  const doc = paperDocument();
+  const original = structuredClone(doc);
+  const buffer = await buildPresentation(doc, 4).write({ outputType: 'nodebuffer' });
+  const zip = await JSZip.loadAsync(buffer);
+  const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+  for (const name of ['figure:group', 'figure:fusion', 'figure:branch-a-label', 'figure:a:0', 'figure:a:1', 'figure:a:2']) assert.ok(xml.includes(name));
+  assert.ok(xml.includes('Spatial encoder') && xml.includes('Temporal encoder'));
+  assert.ok(!xml.includes('<p:pic>'));
+  assert.deepEqual(doc, original);
+  doc.figure.elements[1].text = '<script> & "text"';
+  const svg = figureSvg(doc.figure);
+  assert.ok(svg.includes('&lt;script&gt; &amp; &quot;text&quot;'));
+  assert.ok(!svg.includes('<script>'));
+  assert.ok(svg.includes('marker-end="url(#paper-arrow)"'));
 });

@@ -13,6 +13,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request
 from .local_store import atomic_write, digest, encode, file_hash, inside, now, row_decode, uid
 from .local_git import GitService
+from .local_idea_research import clean_figure, clean_record
 
 ACTIVE = {'snapshotting', 'implementing', 'validating', 'running', 'summarizing', 'waiting_approval'}
 TERMINAL = {'completed', 'blocked', 'failed', 'interrupted', 'cancelled', 'imported'}
@@ -73,13 +74,25 @@ def clean_document(value):
         if not isinstance(label, str) or len(label) > 2000: raise ValueError('连接名称无效')
         edge_ids.add(ident)
         links.append({'id': ident, 'source': edge['source'], 'target': edge['target'], 'label': label})
-    return {'name': name.strip(), 'description': description, 'graph': {'nodes': clean, 'edges': links}}
+    result = {'name': name.strip(), 'description': description, 'graph': {'nodes': clean, 'edges': links}}
+    if value.get('figure') is not None: result['figure'] = clean_figure(value['figure'])
+    return result
 
 
 def semantic(document):
     return {'description': document['description'],
             'nodes': sorted(({k: n[k] for k in NODE_FIELDS} for n in document['graph']['nodes']), key=lambda n: n['id']),
             'edges': sorted(document['graph']['edges'], key=lambda e: e['id'])}
+
+
+def figure_fingerprint(document):
+    return digest(encode({k: v for k, v in semantic(document).items() if k != 'description'}))
+
+
+def with_figure_status(value):
+    figure = value['document'].get('figure')
+    value['figure_stale'] = bool(figure and figure.get('source_hash') != figure_fingerprint(value['document']))
+    return value
 
 
 def changes(before, after):
@@ -174,18 +187,44 @@ class IdeaService:
 
     def document(self, pid, ident):
         self.store.component(ident, pid)
-        return self.store.one('SELECT * FROM idea_documents WHERE idea_id=? AND project_id=?', (ident, pid), True)
+        return with_figure_status(self.store.one('SELECT * FROM idea_documents WHERE idea_id=? AND project_id=?', (ident, pid), True))
 
     def list(self, pid):
         self.store.project(pid)
-        return self.store.all("SELECT d.* FROM idea_documents d JOIN components c ON c.id=d.idea_id WHERE d.project_id=? AND c.status!='absent_in_branch' ORDER BY d.updated_at DESC", (pid,))
+        return [with_figure_status(row) for row in self.store.all("SELECT d.* FROM idea_documents d JOIN components c ON c.id=d.idea_id WHERE d.project_id=? AND c.status!='absent_in_branch' ORDER BY d.updated_at DESC", (pid,))]
+
+    def records(self, pid, ident):
+        self.document(pid, ident)
+        return self.store.all('SELECT id,project_id,idea_id,version_id,based_on_version_id,document_revision,data_json,created_at FROM idea_research_records WHERE project_id=? AND idea_id=? ORDER BY created_at DESC,id DESC', (pid, ident))
 
     def save(self, pid, ident, payload, *, publish_version=False, historical=False):
         doc = clean_document(payload.get('document'))
         if publish_version and not doc['graph']['nodes']: raise ValueError('请先完成模型结构，再保存为版本')
         with self.lock, self.store.lock:
             old = self.document(pid, ident)
+            research_record = payload.get('record')
+            request_hash = digest(encode({k: payload.get(k) for k in ('document', 'record')}))
+            if research_record:
+                record_id, record_version, record_data = clean_record(research_record, self, pid, ident)
+                prior = self.store.one('SELECT * FROM idea_research_records WHERE id=?', (record_id,))
+                if prior:
+                    if prior['project_id'] != pid or prior['idea_id'] != ident or prior['request_hash'] != request_hash:
+                        raise ValueError('研究记录 ID 已用于不同内容，请勿覆盖历史')
+                    return {'idea': old, 'record': prior, 'version': None, 'published': False}
             if payload.get('expected_revision') != old['revision']: raise ValueError('模型已被另一个编辑更新，请保留本地修改并重新加载')
+            if 'figure' not in payload['document'] and old['document'].get('figure'):
+                doc['figure'] = copy.deepcopy(old['document']['figure'])
+            figure = doc.get('figure')
+            if figure:
+                previous_figure = old['document'].get('figure') or {}
+                if not figure.get('source_hash') or {k: v for k, v in figure.items() if k != 'source_hash'} != {k: v for k, v in previous_figure.items() if k != 'source_hash'}:
+                    figure['source_hash'] = figure_fingerprint(doc)
+                else:
+                    figure['source_hash'] = previous_figure.get('source_hash', '')
+                if publish_version and figure['source_hash'] != figure_fingerprint(doc):
+                    raise ValueError('模型结构已改变，请先更新论文模型图再保存为版本')
+            if research_record and record_data['kind'] == 'conclusion' and doc != old['document']:
+                raise ValueError('补充结论时请保留当前设计，模型修改另记一条决策')
             latest = self.store.one('SELECT * FROM idea_versions WHERE idea_id=? ORDER BY number DESC LIMIT 1', (ident,))
             fingerprint = digest(encode(semantic(doc)))
             publish = publish_version and (not latest or latest['semantic_hash'] != fingerprint or latest['stage'] in {'imported', 'cancelled'})
@@ -198,6 +237,11 @@ class IdeaService:
                 current = conn.execute('SELECT revision FROM idea_documents WHERE idea_id=?', (ident,)).fetchone()
                 if current['revision'] != old['revision']: raise ValueError('模型已更新，请刷新')
                 conn.execute('UPDATE idea_documents SET revision=revision+1,document_json=?,updated_at=? WHERE idea_id=?', (encode(doc), now(), ident))
+                if research_record:
+                    snapshot = self.version(record_version)['document'] if record_version else doc
+                    conn.execute('INSERT INTO idea_research_records VALUES(?,?,?,?,?,?,?,?,?,?)',
+                                 (record_id, pid, ident, record_version, latest['id'] if latest else None, old['revision'] + 1,
+                                  encode(snapshot), encode(record_data), request_hash, now()))
                 if publish:
                     number = conn.execute('SELECT COALESCE(MAX(number),0)+1 FROM idea_versions WHERE project_id=?', (pid,)).fetchone()[0]
                     previous_data = row_decode(conn.execute('SELECT data_json FROM components WHERE id=?', (ident,)).fetchone())['data']
@@ -212,6 +256,7 @@ class IdeaService:
                     conn.execute('INSERT INTO idea_versions(id,project_id,idea_id,number,blueprint_revision,idea_revision,document_json,semantic_hash,purpose,stage,message,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
                                  (version_id, pid, ident, number, br, ir, encode(doc), fingerprint, purpose, stage, message, now(), now()))
                     conn.execute('INSERT INTO idea_version_events VALUES(?,?,?,?,?,?)', (uid(), pid, version_id, stage, message, now()))
+                    conn.execute('UPDATE idea_research_records SET version_id=? WHERE idea_id=? AND version_id IS NULL', (version_id, ident))
             if publish: self._export(pid, [ident, old['blueprint_id']])
             self.activate(pid, ident)
         if publish and not historical: self.kick(pid)
@@ -224,7 +269,7 @@ class IdeaService:
         value['events'] = self.store.all('SELECT * FROM idea_version_events WHERE version_id=? ORDER BY created_at,id', (ident,))
         previous = self.store.one('SELECT document_json FROM idea_versions WHERE idea_id=? AND number<? ORDER BY number DESC LIMIT 1', (value['idea_id'], value['number']))
         value['changes'] = changes(previous['document'] if previous else None, value['document'])
-        return value
+        return with_figure_status(value)
 
     def versions(self, pid):
         self.store.project(pid)
@@ -456,6 +501,18 @@ def register_idea_api(app, store, codex, experiments):
     def publish(pid, ident):
         return jsonify(service.save(pid, ident, request.get_json(), publish_version=True))
 
+    @api.route('/projects/<pid>/ideas/<ident>/records', methods=['GET', 'POST'])
+    def records(pid, ident):
+        if request.method == 'GET': return jsonify(records=service.records(pid, ident))
+        data = request.get_json()
+        if not isinstance(data.get('record'), dict): raise ValueError('请提供确定的修改或实验结论')
+        return jsonify(service.save(pid, ident, data))
+
+    @api.get('/projects/<pid>/ideas/<ident>/records/<record_id>')
+    def record_detail(pid, ident, record_id):
+        service.document(pid, ident)
+        return jsonify(record=with_figure_status(store.one('SELECT * FROM idea_research_records WHERE id=? AND idea_id=? AND project_id=?', (record_id, ident, pid), True)))
+
     @api.post('/projects/<pid>/idea-context')
     def activate(pid):
         service.activate(pid, request.get_json().get('idea_id'))
@@ -467,6 +524,11 @@ def register_idea_api(app, store, codex, experiments):
         if not active: return jsonify(active=None)
         return jsonify(active=active, project=store.project(active['project_id']),
                        idea=service.document(active['project_id'], active['idea_id']) if active['idea_id'] else None,
+                       records=service.records(active['project_id'], active['idea_id'])[:10] if active['idea_id'] else [],
+                       workflow={'record_policy': 'When a research change is agreed in chat, POST the full current document plus a record with a stable UUID, kind=decision, title, change, reason and validation. Do not log every message or application-development work. Record conclusions against the exact version_id and experiment_ids; metrics are read from those runs.',
+                                 'record_endpoint': f"/projects/{active['project_id']}/ideas/{active['idea_id']}/records" if active['idea_id'] else None,
+                                 'figure_format': 'document.figure: width,height,title,caption,elements. Element types: rect,ellipse,text,line,polyline. Geometry and labels are authored by Codex; no drag editor. See docs/IDEA_CANVAS.md. Retain source_hash when reusing the figure; redraw it when the method changes.',
+                                 'execution_policy': 'Saving a draft or recording a decision never executes. Only an explicit user version submission may publish and start experiments.'},
                        api_base=os.getenv('EASYREF_API_BASE', 'http://127.0.0.1:5000/api'))
 
     @api.get('/projects/<pid>/idea-versions')

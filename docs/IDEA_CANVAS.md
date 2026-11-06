@@ -1,18 +1,26 @@
-# Idea 模型画布与统一版本
+# Idea 研究记录与统一版本
 
-Idea 页面以紧凑模型预览为中心，不包含聊天面板。讨论在 Codex 聊天中进行，
-模型通过本地 API 更新；页面自动轮询最新状态。点击模块查看详情，点击“编辑模型”
-打开 React Flow 编辑窗口，调整模块和连线；“完成编辑”返回预览并保存草稿。
-连续编辑停下约两秒后自动保存草稿。改结构、说明、拖动、排版或切换页面均不启动实验。
-设计完成后点击“保存为版本”，才固定当前设计、创建统一版本并自动进入实验流程。
-这一操作会包含尚未自动保存的最后一次修改，无需再去 Experiment 点击“开始”。
-支持撤销、重做；未保存的本地修改在当前浏览器标签页中保留，切换工作区后可恢复。
-并发编辑冲突不会覆盖远端版本，可先下载本地副本再重新加载。
+Idea 是随 Codex 聊天更新的研究档案。页面中心展示论文模型图，下面是设计说明、
+讨论决策和对应实验结果；没有内嵌聊天或拖拽编辑器。
 
-预览按窗口宽度自动排列简单链路，窄窗口会折行；复杂分支和循环用 Dagre 排列，
-超出区域可滚动查看。预览布局不写回模型，编辑窗口和 PPT 仍使用保存的节点位置。
-设计说明默认显示原文节选，可展开全文；版本列表默认显示最近三条，可展开全部。
-这些阅读操作不会修改草稿修订、创建版本或启动实验。
+Codex 通过本地 API 直接读取当前项目。每次讨论确定一项研究修改时，一次性提交
+完整设计、论文图和研究记录（修改内容、理由、预期验证）。不要保存每轮闲聊，
+也不要把应用开发工作写成研究决策。记录保存为草稿，不创建实验版本、不启动执行。
+
+设计完成后由用户点击“保存为版本”，才固定当前设计、创建 Idea/Experiment 共用的
+Vn 并开始实验。此操作包含尚未自动保存的最后一次说明修改；之前的草稿决策归入该
+版本，但各决策自己的设计快照保持原样。仅图形外观调整不触发新的实验。
+
+实验指标由对应 Run 记录直接显示。Codex 在后续讨论中追加结论，引用准确的版本 ID
+和运行 ID；指标从服务端实际运行记录读取，不采用提交内容里自报的数字。结论可以
+针对旧版本补写，此时固定旧版本的设计，不覆盖当前的新草稿。
+
+论文图以结构化矢量元素保存，可导出 SVG 和原生可编辑 PPT。旧版本如果没有论文图，
+保留原方案与实验记录，不伪造或回填历史图。修改结构却沿用旧图时会显示待同步状态，
+并阻止提交不一致的版本。详见 [论文图格式](IDEA_FIGURES.md)。
+
+并发冲突不会覆盖远端设计，未保存的本地说明可下载后重新加载。浏览、导出和展开
+历史记录不会修改设计或开始实验。
 
 ## 版本与执行
 
@@ -74,7 +82,8 @@ python backend/scripts/idea_canvas.py --api-base http://127.0.0.1:5012/api versi
 节点类型：`input / backbone / module / output / loss`。更新时保留未改模块的 ID、
 位置与用户标注，优先局部修改。`expected_revision` 必须来自最新读取；冲突时重新读取
 并协调，不能直接覆盖。当前画布修订与研究版本号是不同字段：草稿保存增加修订，
-但不创建新的实验版本。Codex 修改模型默认只用 `save` 保存草稿，等待用户点击按钮。
+但不创建新的实验版本。探索中的编辑用 `save` 保存草稿；讨论确定修改后用 `record`
+原子保存设计与决策。两者都等待用户点击按钮才开始实验。
 只有用户明确要求提交版本时才使用 `publish`（参数与 `save` 相同）或版本提交接口。
 
 对应 HTTP 接口：
@@ -84,6 +93,8 @@ python backend/scripts/idea_canvas.py --api-base http://127.0.0.1:5012/api versi
 | `GET /api/idea-context` | 当前页面项目/Idea 与实例地址 |
 | `GET/POST /api/projects/<pid>/ideas` | 列表、创建或接入已有 Idea |
 | `GET/PUT /api/projects/<pid>/ideas/<id>` | 读取/乐观锁保存草稿；不排队 |
+| `GET/POST /api/projects/<pid>/ideas/<id>/records` | 查询研究记录 / 原子保存设计与一条确定的决策或结论 |
+| `GET /api/projects/<pid>/ideas/<id>/records/<record_id>` | 读取这条记录当时的完整设计快照 |
 | `POST /api/projects/<pid>/ideas/<id>/versions` | 提交完整 document 与 expected_revision，保存正式版本并排队 |
 | `GET /api/projects/<pid>/idea-versions` | 版本、真实阶段、变更摘要、运行与事件 |
 | `POST /api/idea-versions/<id>/cancel` | 停止版本，保留历史 |
@@ -93,6 +104,35 @@ python backend/scripts/idea_canvas.py --api-base http://127.0.0.1:5012/api versi
 已有 Idea 可接入画布，原字段和已有 Blueprint 历史保留；通用旧实验界面仍可访问。
 接入已有架构会创建“历史设计”版本，不重新启动历史实验，也不事后改写旧 Run 的设计关联。
 用户点击“保存为版本”后才创建并执行下一版本。旧 Blueprint 的 `source_ids` 关系也可用于恢复架构。
+
+## 聊天中的记录操作
+
+先 `context`，再读取当前文档和修订。将完整文档写入临时 JSON，另写一份记录 JSON：
+
+```json
+{
+  "id": "一枚新 UUID；重试时复用",
+  "kind": "decision",
+  "title": "确定的修改标题",
+  "change": "这次具体修改了什么",
+  "reason": "讨论中确定的理由",
+  "validation": "预期怎样验证；不涉及实验时明确说明",
+  "source": "Codex · 当前讨论"
+}
+```
+
+```powershell
+python backend/scripts/idea_canvas.py --api-base http://127.0.0.1:5012/api record --project <pid> --idea <id> --file <document.json> --record-file <record.json> --expected-revision <revision> --reason "确定的修改"
+```
+
+记录结论时用 `kind: "conclusion"`，必填 `version_id` 和 `conclusion`，可填写
+`experiment_ids: ["实际 Run ID"]`。仍提交当前完整文档，但不要同时改当前模型；
+服务端将该记录的设计快照固定为被引用的正式版本。若还需要调整模型，另记决策。
+
+相同记录 ID 和相同请求内容的重试不会重复记录或增加修订；同一个 ID 不能改写内容。
+更正历史结论应追加记录，而非覆盖原记录。研究记录随项目 checkpoint 导出与恢复。
+CLI 默认等待 120 秒，包含项目归档时间，可用全局参数 `--timeout` 调整。超时后先用
+`get` / `records` 确认是否已写入，不能换一个记录 ID 盲目重复提交。
 
 ## 导出与验证
 
@@ -104,7 +144,7 @@ PPT 通过 PptxGenJS 延迟加载生成。模块、文本和箭头为原生可�
 修改后的代码如与原实现清单不符，会阻止继续把它当成原版本执行。
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest backend/tests/test_idea_canvas.py -q
+.\.venv\Scripts\python.exe -m pytest backend/tests/test_idea_canvas.py backend/tests/test_idea_research.py -q
 node --test frontend/unit/idea-graph.test.mjs
 npm --prefix frontend run build
 # 使用隔离数据、IDEA_AUTOSTART=False 的验收服务，避免 UI 测试调用真实 Codex。
@@ -114,4 +154,6 @@ npm --prefix frontend run test:e2e -- tests/idea.spec.js
 
 共享接线文件：`local_api.py`、`local_codex.py`、`local_store.py`、
 `research_schema/bridge.py`、`ResearchWorkbench.jsx`、`ExperimentWorkspace.jsx`，
-以及依赖清单。新增迁移编号为 `006_idea_versions.sql`，集成其他组件前需检查编号冲突。
+以及依赖清单。统一版本使用 `006_idea_versions.sql`；研究记录新增
+`007_idea_research_records.sql`，并在 `research_schema/bridge.py` 接入项目导出与恢复。
+聊天记录约定写入 `AGENTS.md`。共享修改单独提交，集成其他组件前需检查迁移编号冲突。
