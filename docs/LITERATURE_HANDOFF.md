@@ -77,3 +77,9 @@
 翻译浮窗仅显示译文，移除原文、标题、操作按钮和底部说明。首次译文到达前用工具栏图标显示等待状态，错误显示在阅读区提示条中。滚轮滚动不再清除选区或收起浮窗，译文保留在阅读视口内。通过选区边界去重避免 pointerup 与 selectionchange 重复请求；新选文、Esc 或关闭开关会取消旧请求。笔记仍从原工具栏打开。
 
 仅修改 `LiteratureApiSettings.jsx`、`LiteratureReader.jsx`、`useLiteratureTranslation.js`、`literature.css` 及本记录，无共享代码、后端、迁移或依赖变更。前端构建通过，现有 research-links 单元测试 2 项通过。浏览器实际验证：保存原配置后弹窗关闭；默认关闭时选文不出现译文；开启后公开论文标题自动获得真实 OpenAI 中文译文；浮窗无标题、原文和控件；向下滚动后原文选区及译文均保留；关闭开关后浮窗消失。此次选词验证仅产生一次翻译请求。截图：`logs/pdf-translation-scroll-retained.png`。未运行全量浏览器套件或重复后端测试；5011 已加载新构建，尚未合入 `main`。
+
+## 选文后立即显示浮窗
+
+本记录所在提交接续 `66bdb8d`，分支 `codex/literature`。翻译开启时，选文后立即显示浮窗及三个动态小点；首段译文到达后自动替换为译文，继续流式更新。没有增加原文、标题或操作按钮，支持系统减少动态效果设置。
+
+仅修改 `LiteratureReader.jsx`、`literature.css` 和本记录，无共享代码、后端、依赖或迁移变更。前端构建及现有单元测试 2 项通过；浏览器确认 API 返回前已有加载浮窗，真实译文到达后加载点消失。截图：`logs/pdf-translation-instant-loading.png`。此轮仅调整加载反馈，未重复后端测试或全量浏览器套件。5011 已加载新构建，尚未合入 `main`。

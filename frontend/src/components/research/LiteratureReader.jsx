@@ -6,7 +6,7 @@ import useLiteratureTranslation from './useLiteratureTranslation.js';
 import { request, Field } from './shared.jsx';
 import { downloadApiFile } from '../../utils/api.js';
 
-function SelectionPopup({ anchor, stage, text }) {
+function SelectionPopup({ anchor, stage, text, busy }) {
   const ref = useRef(null);
   const [position, setPosition] = useState(null);
   useLayoutEffect(() => {
@@ -26,8 +26,8 @@ function SelectionPopup({ anchor, stage, text }) {
     observer.observe(stage.current);
     return () => observer.disconnect();
   }, [anchor, stage]);
-  return <section ref={ref} className="lit-selection-popup" role="status" aria-label="译文" style={{ ...position, visibility: position ? 'visible' : 'hidden' }}>
-    <p className="lit-translation-output">{text}</p>
+  return <section ref={ref} className="lit-selection-popup" role="status" aria-label={busy && !text ? '正在翻译' : '译文'} aria-busy={busy} style={{ ...position, visibility: position ? 'visible' : 'hidden' }}>
+    {text ? <p className="lit-translation-output">{text}</p> : <span className="lit-translation-loading" aria-hidden="true"><i /><i /><i /></span>}
   </section>;
 }
 
@@ -150,7 +150,7 @@ export default function LiteratureReader({ paper, project, onClose, onChanged, o
       {hasPdf ? <div className="lit-pdf-pane" ref={reader} onPointerDown={() => { selecting.current = true; lastSelection.current = null; assist.reset(); setAnchor(null); setNotesOpen(false); }} onPointerUp={() => { selecting.current = false; capture(); }} onPointerCancel={() => { selecting.current = false; }} onKeyUp={capture}>
         <PdfJsViewer key={version} url={`/api/papers/${paper.id}/pdf?v=${version}`} title={paper.title} toolbarContainer={toolbarContainer} />
       </div> : <div className="lit-pdf-empty"><p>添加 PDF 后开始阅读。</p><button onClick={() => setAttachments(true)}><Upload size={15} />添加 PDF</button></div>}
-      {translationEnabled && anchor && currentTranslation && assist.translation && <SelectionPopup anchor={anchor} stage={stage} text={assist.translation} />}
+      {translationEnabled && anchor && currentTranslation && (assist.busy || assist.translation) && <SelectionPopup anchor={anchor} stage={stage} text={assist.translation} busy={assist.busy} />}
       {notesOpen && <section className="lit-reader-notes" role="dialog" aria-label="摘录与笔记">
         <header><strong>摘录与笔记 · {annotations.length}</strong><button type="button" className="rw-icon" aria-label="关闭笔记" onClick={() => setNotesOpen(false)}><X size={15} /></button></header>
         {quote && <blockquote className="lit-selection-quote"><small>第 {page} 页</small><p>{quote}</p></blockquote>}
