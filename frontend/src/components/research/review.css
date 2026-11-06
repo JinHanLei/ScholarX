@@ -1,0 +1,16 @@
+.rw-content > .review-workspace { max-width: 1120px; width: 100%; margin: 0 auto; }
+.review-intake textarea { line-height: 1.65; }
+.review-workspace .rw-card-heading { flex-wrap: wrap; gap: 12px; }
+.review-workspace .rw-toolbar { flex-wrap: wrap; }
+.review-workspace .rw-toolbar select { max-width: 100%; }
+.review-empty { padding: 22px 0; }
+.review-summary, .review-response p, .review-response dd { white-space: pre-wrap; overflow-wrap: anywhere; }
+.review-response blockquote { margin: 18px 0; padding: 14px 18px; border-left: 3px solid #7c91b4; background: #f6f8fb; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; color: #374151; }
+.review-analysis { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 16px 0; }
+.review-analysis p { margin-top: 8px; }
+.review-record { margin: 16px 0; }
+.review-record dd { margin: 5px 0 16px; }
+.review-record dt { font-weight: 600; }
+.review-secondary { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 0; color: #64748b; }
+.review-secondary button { margin-left: auto; }
+@media (max-width: 680px) { .review-analysis { grid-template-columns: 1fr; gap: 8px; } .review-workspace .rw-card-heading > .rw-toolbar { width: 100%; } }

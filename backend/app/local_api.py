@@ -371,6 +371,9 @@ def configure_local(app):
     @api.get('/reviews/<ident>')
     def review(ident): return jsonify(review=reviews.get(ident))
 
+    @api.patch('/reviews/<ident>/responses')
+    def review_responses(ident): return jsonify(review=reviews.save_responses(ident,body()))
+
     @api.post('/reviews/<ident>/stop')
     def review_stop(ident): return jsonify(review=reviews.stop(ident))
 

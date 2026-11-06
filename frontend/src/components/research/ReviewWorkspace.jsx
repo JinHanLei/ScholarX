@@ -1,32 +1,138 @@
-import React, { useEffect, useState } from 'react';
-import { ShieldCheck, Play, Square, GitBranch, Link2, Plus, Download } from 'lucide-react';
-import { request, Field, JsonField, Badge, Empty, pretty, short, stamp } from './shared.jsx';
-import { downloadApiFile } from '../../utils/api.js';
+import React, { useEffect, useRef, useState } from 'react';
+import { MessageSquareReply, Play, Square, Download, Save, ShieldCheck } from 'lucide-react';
+import { request, Field, Badge, stamp } from './shared.jsx';
+import ReviewPreparation from './ReviewPreparation.jsx';
+import './review.css';
 
-function ClaimsPanel({ project, act, select, epoch }) {
-  const [claims, setClaims] = useState([]); const [claim, setClaim] = useState(null); const [name, setName] = useState(''); const [statement, setStatement] = useState(''); const [links, setLinks] = useState([]);
-  const [source, setSource] = useState('experiment_id'); const [sourceId, setSourceId] = useState(''); const [locator, setLocator] = useState(''); const [note, setNote] = useState(''); const [verification, setVerification] = useState('');
-  const load = async () => setClaims((await request(`/projects/${project.id}/components?kind=claim`)).components);
-  useEffect(() => { act(load); }, [epoch]);
-  const choose = (c) => { setClaim(c); select({ kind: 'claim', id: c.id, title: c.name }); act(async () => setLinks((await request(`/claims/${c.id}/evidence`)).evidence)); };
-  return <details className="rw-card" open><summary><Link2 size={17} /> Research Claims & Evidence</summary><p className="rw-muted">Verified 需要可定位的实际证据及人工核验说明。实验指标校正会将关联论点、段落和审稿问题标记为待核查。</p><div className="rw-claim-list">{claims.map((c) => <button key={c.id} className={claim?.id === c.id ? 'active' : ''} onClick={() => choose(c)}><span>{c.name}</span><Badge tone={c.status === 'Verified' ? 'local' : 'warning'}>{c.status}</Badge><small>{short(c.id)}</small></button>)}</div><details><summary>添加研究论点</summary><Field label="Claim 名称"><input value={name} onChange={(e) => setName(e.target.value)} /></Field><Field label="可核验的研究表述"><textarea value={statement} onChange={(e) => setStatement(e.target.value)} /></Field><button disabled={!name || !statement} onClick={() => act(async () => { const r = await request(`/projects/${project.id}/components`, { method: 'POST', body: { kind: 'claim', name, data: { statement } } }); setName(''); setStatement(''); await load(); choose(r.component); })}>保存 Claim</button></details>{claim && <div className="rw-claim-detail"><h3>{claim.name}</h3><code>{claim.id}</code><p>{claim.data.statement}</p>{links.map((l) => <div className="rw-evidence" key={l.id}><Badge>{l.experiment_id ? 'Experiment' : l.paper_id ? 'Literature' : 'Component'}</Badge><code>{l.experiment_id || l.paper_id || l.component_id}</code><strong>{l.locator}</strong><p>{l.note}</p><small>证据版本 {short(l.source_hash)}</small></div>)}<div className="rw-form-grid"><Field label="证据类型"><select value={source} onChange={(e) => setSource(e.target.value)}><option value="experiment_id">真实实验</option><option value="paper_id">文献来源</option><option value="component_id">图表 / 组件</option></select></Field><Field label="证据稳定 ID"><input value={sourceId} onChange={(e) => setSourceId(e.target.value)} /></Field><Field label="具体指标 / 页码 / 位置"><input value={locator} onChange={(e) => setLocator(e.target.value)} /></Field><Field label="证据说明"><input value={note} onChange={(e) => setNote(e.target.value)} /></Field></div><button disabled={!sourceId || !locator} onClick={() => act(async () => { const r = await request(`/claims/${claim.id}/evidence`, { method: 'POST', body: { [source]: sourceId, locator, note } }); setLinks(r.evidence); await load(); })}>关联证据</button><Field label="人工核验：这些证据如何支持该论点？"><textarea value={verification} onChange={(e) => setVerification(e.target.value)} /></Field><button className="rw-primary" disabled={!verification || !links.length} onClick={() => act(async () => { const r = await request(`/claims/${claim.id}/verify`, { method: 'POST', body: { note: verification } }); choose(r.claim); await load(); })}>记录核验并标记 Verified</button></div>}</details>;
+const phases = { parsing: '正在拆解审稿意见', processing: '正在处理修改、核查证据并撰写回复', done: '回复草稿已生成', failed: '处理失败', interrupted: '处理已中断' };
+const statuses = { pending: '待处理', drafted: '草稿待核对', blocked: '需要补充材料或处理' };
+
+function responseDocument(review, edits) {
+  return ['# Response to reviewers', review.scope.summary,
+    ...(review.scope.responses || []).map((r, i) => `## ${r.reviewer} · Comment ${i + 1}\n\n${r.original}\n\n### Response\n\n${edits[r.id] ?? r.response}\n\n### Processing record\n\nStatus: ${statuses[r.status]}\n\nEvidence: ${r.evidence}\n\nChanges: ${r.changes}\n\nValidation: ${r.validation}${r.blocker ? `\n\nPending: ${r.blocker}` : ''}`),
+  ].join('\n\n');
 }
 
 export default function ReviewWorkspace({ project, act, select, epoch, setStage }) {
-  const [reviews, setReviews] = useState([]); const [roles, setRoles] = useState([]); const [chosenRoles, setChosenRoles] = useState(['Methodology Reviewer', 'Author / Rebuttal Agent']); const [review, setReview] = useState(null);
-  const [scope, setScope] = useState(''); const [rounds, setRounds] = useState(1); const [seconds, setSeconds] = useState(600); const [issueNote, setIssueNote] = useState('');
-  const [submitted, setSubmitted] = useState(false); const [tasks, setTasks] = useState([]);
-  const [submissions, setSubmissions] = useState([]); const [venue, setVenue] = useState(''); const [branch, setBranch] = useState('submission/'); const [parent, setParent] = useState(''); const [pdfPath, setPdfPath] = useState(''); const [expIds, setExpIds] = useState('');
-  const [git, setGit] = useState(null); const [profiles, setProfiles] = useState([]); const [profileId, setProfileId] = useState(''); const [profile, setProfile] = useState({ name: '', latex_template: '', page_limit: '', figure_requirements: '', reference_style: '', anonymity: '', checklist: [], source_url: '', verified_at: '' }); const [notice, setNotice] = useState('');
-  const load = async () => { const [r, s, g, p, t] = await Promise.all([request(`/projects/${project.id}/reviews`), request(`/projects/${project.id}/submissions`), request(`/projects/${project.id}/git`), request(`/projects/${project.id}/components?kind=venue_profile`), request(`/projects/${project.id}/components?kind=task`)]); setReviews(r.reviews); setRoles(r.roles); setSubmissions(s.submissions); setGit(g); setProfiles(p.components); setTasks(t.components); };
-  useEffect(() => { act(load); }, [epoch]);
-  useEffect(() => { if (!review || review.status !== 'running') return; const timer = setInterval(() => act(async () => { setReview((await request(`/reviews/${review.id}`)).review); await load(); }), 1800); return () => clearInterval(timer); }, [review?.id, review?.status]);
-  const locate = (issue) => act(async () => { if (issue.component_id) { const c = (await request(`/components/${issue.component_id}`)).component; select({ kind: c.kind, id: c.id, title: c.name, document_path: c.data.path }); setStage(['paragraph', 'section', 'figure', 'table'].includes(c.kind) ? 'Paper' : ['blueprint', 'module'].includes(c.kind) ? 'Experiment' : 'Idea'); } else if (issue.experiment_id) { select({ kind: 'experiment', id: issue.experiment_id, title: 'Review linked experiment' }); setStage('Experiment'); } });
-  return <div className="rw-stack"><ClaimsPanel project={project} act={act} select={select} epoch={epoch} /><section className="rw-card"><div className="rw-card-heading"><div><div className="rw-eyebrow">BOUNDED RESEARCH REVIEW</div><h2>审稿与可参与讨论</h2></div><ShieldCheck size={23} /></div><p className="rw-muted">不同审稿角色沿用同一 Codex 配置。所有意见来自实际会话，不代表独立模型交叉验证。审稿只读项目，修改建议由你选择执行。</p><Field label="审查范围与重点"><textarea rows={3} value={scope} onChange={(e) => setScope(e.target.value)} placeholder="例如：检查论文核心论点是否有对应实验依据，指出具体段落或模块。" /></Field><div className="rw-role-picker">{roles.map((role) => <label className="rw-checkbox" key={role}><input type="checkbox" checked={chosenRoles.includes(role)} onChange={(e) => setChosenRoles(e.target.checked ? [...chosenRoles, role] : chosenRoles.filter((r) => r !== role))} /> {role}</label>)}</div><div className="rw-toolbar"><Field label="最大讨论轮数"><input type="number" min="1" max="5" value={rounds} onChange={(e) => setRounds(Number(e.target.value))} /></Field><Field label="总时间预算（秒）"><input type="number" min="30" max="3600" value={seconds} onChange={(e) => setSeconds(Number(e.target.value))} /></Field><button className="rw-primary" disabled={!chosenRoles.length || review?.status === 'running'} onClick={() => act(async () => { const r = await request(`/projects/${project.id}/reviews`, { method: 'POST', body: { roles: chosenRoles, instructions: scope, max_rounds: rounds, max_seconds: seconds } }); setReview(r.review); await load(); })}><Play size={15} /> 开始真实审稿</button></div></section>
-    <div className="rw-toolbar"><select aria-label="审稿轮次" value={review?.id || ''} onChange={(e) => act(async () => setReview((await request(`/reviews/${e.target.value}`)).review))}><option value="" disabled>选择审稿任务</option>{reviews.map((r) => <option key={r.id} value={r.id}>{stamp(r.created_at)} · {r.status}</option>)}</select>{review && <><Badge>Round {review.round} / {review.max_rounds} · {review.status}</Badge>{review.status === 'running' && <button onClick={() => act(async () => setReview((await request(`/reviews/${review.id}/stop`, { method: 'POST', body: {} })).review))}><Square size={15} /> 结束讨论</button>}</>}</div>
-    {review && <><div className="rw-toolbar">{review.sessions.map((id, i) => <button key={id} onClick={() => select({ kind: 'session', id, title: `审稿会话 ${i + 1}` })}>会话 {i + 1} · 查看 / 插入意见</button>)}</div>{!review.issues.length && <Empty>{review.status === 'running' ? '审稿正在读取实际项目，完成后才登记问题。' : '此任务没有登记问题。请查看会话结论或错误信息。'}</Empty>}<Field label="用户证据 / 拒绝理由 / 验证结果"><textarea value={issueNote} onChange={(e) => setIssueNote(e.target.value)} placeholder="变更问题状态前记录你的依据" /></Field>{review.issues.map((i) => <article className="rw-card rw-issue" key={i.id}><div className="rw-toolbar"><Badge tone="warning">{i.severity}</Badge><Badge>{i.status}</Badge><code>{short(i.id)}</code></div><h3>{i.problem}</h3><dl><dt>Evidence</dt><dd>{i.evidence}</dd><dt>Suggested Fix</dt><dd>{i.suggested_fix}</dd><dt>Verification Requirement</dt><dd>{i.verification}</dd></dl><div className="rw-toolbar">{(i.component_id || i.experiment_id) && <button onClick={() => locate(i)}>定位关联组件</button>}<button onClick={() => act(async () => { await request(`/issues/${i.id}/task`, { method: 'POST', body: { type: 'experiment' } }); setNotice('已生成实验验证任务；执行前请在 Assistant 引用任务并确认命令。'); await load(); })}>转为实验任务</button><button onClick={() => act(async () => { await request(`/issues/${i.id}/task`, { method: 'POST', body: { type: 'writing' } }); setNotice('已保存写作修改任务；不会自动覆盖正文。'); await load(); })}>转为写作任务</button>{['rejected', 'resolved', 'needs_review'].map((s) => <button key={s} onClick={() => act(async () => { await request(`/issues/${i.id}`, { method: 'PATCH', body: { status: s, note: issueNote } }); setReview((await request(`/reviews/${review.id}`)).review); })}>{s === 'rejected' ? '拒绝建议' : s === 'resolved' ? '已验证解决' : '重新审查'}</button>)}</div></article>)}</>}
-    {notice && <p className="rw-success">{notice}</p>}{tasks.length > 0 && <section className="rw-card"><h3>Review 后续任务</h3>{tasks.map((task) => <div className="rw-toolbar" key={task.id}><Badge>{task.data.type}</Badge><span>{task.name}</span><button onClick={() => select({ kind: 'task', id: task.id, title: task.name })}>带入 Assistant 处理</button></div>)}</section>}
-    <details className="rw-card"><summary>Venue Profile · 投稿规范与核验来源</summary><JsonField label="会议 / 期刊配置" value={profile} onChange={setProfile} rows={12} /><button disabled={!profile.name || !profile.source_url || !profile.verified_at} onClick={() => act(async () => { const r = await request(`/projects/${project.id}/components`, { method: 'POST', body: { kind: 'venue_profile', name: profile.name, data: profile } }); setProfileId(r.component.id); await load(); })}>保存已核验的 Venue Profile</button><p className="rw-muted">模板、页数、图表、引用、匿名、投稿检查项均保留来源和核验日期；切换 Venue 时需重新核验。</p></details>
-    <section className="rw-card"><div className="rw-card-heading"><div><div className="rw-eyebrow">RESEARCH CORE → SUBMISSION</div><h2>投稿分支与不可变快照</h2></div><GitBranch size={21} /></div><div className="rw-toolbar"><span>当前分支</span><select aria-label="Git 投稿分支" value={git?.branch || ''} onChange={(e) => { const name = e.target.value; act(async () => { await request(`/projects/${project.id}/git/switch`, { method: 'POST', body: { name } }); await load(); }); }}>{git?.branches.map((b) => <option key={b}>{b}</option>)}</select><button onClick={() => act(() => downloadApiFile(`/projects/${project.id}/export`, {}, 'EasyRef-project.zip'))}><Download size={15} /> 导出项目</button></div><p className="rw-muted">创建快照前请保存 Git Checkpoint。快照内保存当时的源码、组件、大纲、所选实验和可选 PDF，后续修改不会重写历史快照。</p><div className="rw-form-grid"><Field label="目标会议 / 期刊"><input value={venue} onChange={(e) => setVenue(e.target.value)} /></Field><Field label="新投稿分支"><input value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="submission/aaai 或 revision/tkde-r1" /></Field><Field label="父投稿（转投 / Revision）"><select value={parent} onChange={(e) => setParent(e.target.value)}><option value="">首次投稿</option>{submissions.map((s) => <option key={s.id} value={s.id}>{s.venue} · {s.branch}</option>)}</select></Field><Field label="Venue Profile"><select value={profileId} onChange={(e) => { const id = e.target.value; setProfileId(id); const p = profiles.find((x) => x.id === id); if (p) { setVenue(p.name); setNotice(`切换到 ${p.name}：请核对模板、页数、参考文献与匿名要求。来源 ${p.data.source_url}，核验日期 ${p.data.verified_at}。`); } }}><option value="">未关联规范</option>{profiles.map((p) => <option value={p.id} key={p.id}>{p.name} · {p.data.verified_at}</option>)}</select></Field><Field label="提交 PDF（项目相对路径，可选）"><input value={pdfPath} onChange={(e) => setPdfPath(e.target.value)} /></Field><Field label="主要实验 ID（逗号分隔）"><input value={expIds} onChange={(e) => setExpIds(e.target.value)} /></Field></div><label className="rw-checkbox"><input type="checkbox" checked={submitted} onChange={(e) => setSubmitted(e.target.checked)} /> 记录已实际提交的版本（必须提供当时的 PDF；不会代为发送投稿）</label><button className="rw-primary" disabled={!venue || branch.length < 12 || (submitted && !pdfPath)} onClick={() => act(async () => { await request(`/projects/${project.id}/submissions`, { method: 'POST', body: { submitted, venue, branch, parent_id: parent || null, venue_profile_id: profileId || null, pdf_path: pdfPath || null, experiment_ids: expIds.split(',').map((x) => x.trim()).filter(Boolean) } }); await load(); })}>创建投稿分支与快照</button><div className="rw-submissions">{submissions.map((s) => <article key={s.id}><div><strong>{s.venue}</strong><Badge>{s.snapshot_kind === 'submitted' ? '实际投稿记录' : '准备快照'}</Badge><small>{s.branch} · {short(s.git_commit)} · {stamp(s.submitted_at)}</small><code>SHA256 {s.sha256}</code></div><button onClick={() => act(() => downloadApiFile(`/submissions/${s.id}/snapshot`, {}, 'EasyRef-submission.zip'))}>下载原始快照</button><select aria-label="投稿结果" defaultValue="" onChange={(e) => { const kind = e.target.value; act(async () => { await request(`/submissions/${s.id}/events`, { method: 'POST', body: { kind, data: { note: issueNote } } }); setNotice('投稿结果已追加保存，原始提交快照不变。'); }); }}><option value="" disabled>记录结果 / 阶段</option>{['Reject', 'Major Revision', 'Minor Revision', 'Rebuttal', 'Camera-ready', 'Accept'].map((v) => <option key={v}>{v}</option>)}</select></article>)}</div></section>
+  const [source, setSource] = useState('');
+  const [instructions, setInstructions] = useState('');
+  const [language, setLanguage] = useState('English');
+  const [seconds, setSeconds] = useState(1800);
+  const [reviews, setReviews] = useState([]);
+  const [review, setReview] = useState(null);
+  const [edits, setEdits] = useState({});
+  const [starting, setStarting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [showSubmission, setShowSubmission] = useState(false);
+  const [intakeOpen, setIntakeOpen] = useState(true);
+  const selectedId = useRef(null);
+  const busy = review?.status === 'running';
+  const responses = review?.scope.responses || [];
+  const dirty = Object.keys(edits).length > 0;
+  const hasRunning = reviews.some((r) => r.status === 'running');
+
+  const choose = (next) => { selectedId.current = next?.id; setReview(next); setEdits({}); setNotice(''); if (next) setIntakeOpen(false); };
+  useEffect(() => {
+    let live = true;
+    act(async () => {
+      const data = await request(`/projects/${project.id}/reviews`);
+      if (!live) return;
+      setReviews(data.reviews);
+      if (!selectedId.current) {
+        const latest = data.reviews.find((r) => r.scope?.mode === 'rebuttal');
+        if (latest) choose(latest);
+      }
+    });
+    return () => { live = false; };
+  }, [project.id, epoch]);
+
+  useEffect(() => {
+    if (!busy && !hasRunning) return;
+    let live = true; let pending = false;
+    const timer = setInterval(async () => {
+      if (pending) return;
+      pending = true;
+      await act(async () => {
+        const data = await request(`/projects/${project.id}/reviews`);
+        if (!live) return;
+        setReviews(data.reviews);
+        const next = data.reviews.find((r) => r.id === review?.id);
+        if (next && busy) setReview(next);
+      });
+      pending = false;
+    }, 1500);
+    return () => { live = false; clearInterval(timer); };
+  }, [review?.id, busy, hasRunning, project.id]);
+
+  const start = () => act(async () => {
+    setStarting(true); setNotice('');
+    try {
+      const data = await request(`/projects/${project.id}/reviews`, { method: 'POST', body: { mode: 'rebuttal', source, instructions, language, max_seconds: seconds } });
+      choose(data.review);
+      setReviews((items) => [data.review, ...items]);
+    } finally { setStarting(false); }
+  });
+  const save = () => act(async () => {
+    setSaving(true);
+    try {
+      const data = await request(`/reviews/${review.id}/responses`, { method: 'PATCH', body: { revision: review.scope.revision, responses: Object.entries(edits).map(([id, response]) => ({ id, response })) } });
+      choose(data.review); setNotice('回复草稿已保存');
+    } finally { setSaving(false); }
+  });
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([responseDocument(review, edits)], { type: 'text/markdown;charset=utf-8' }));
+    const a = document.createElement('a'); a.href = url; a.download = `review-response-${review.id.slice(0, 8)}.md`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  return <div className="rw-stack review-workspace">
+    <details className="rw-card review-intake" open={intakeOpen} onToggle={(e) => setIntakeOpen(e.currentTarget.open)}>
+      <summary><MessageSquareReply size={21} />{review ? '粘贴新一轮审稿意见' : '粘贴审稿意见，开始准备回复'}</summary>
+      <p className="rw-muted">粘贴编辑和审稿人的完整意见。Codex 会按审稿人逐条拆解，读取论文与实验，执行可行的修改和验证，自动填充处理记录与回复草稿。</p>
+      <Field label="审稿意见原文" hint="保留 Reviewer 1 / Reviewer 2 等标题即可，无需手动整理成表格。">
+        <textarea rows={10} maxLength={100000} value={source} onChange={(e) => setSource(e.target.value)} placeholder={'Reviewer 1\n1. Please clarify…\n2. An additional experiment is needed…\n\nReviewer 2\n…'} />
+      </Field>
+      <div className="rw-form-grid">
+        <Field label="回复语言"><select value={language} onChange={(e) => setLanguage(e.target.value)}><option>English</option><option>中文</option></select></Field>
+        <Field label="自动处理时间预算（秒）"><input type="number" min="30" max="3600" value={seconds} onChange={(e) => setSeconds(Number(e.target.value))} /></Field>
+      </div>
+      <Field label="补充要求（可选）"><textarea rows={2} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="例如：回复不超过 1000 词；重点解释表 3；补充实验使用项目内已有数据。" /></Field>
+      <div className="rw-toolbar"><button className="rw-primary" disabled={!source.trim() || starting || busy || hasRunning || dirty || seconds < 30 || seconds > 3600} onClick={start}><Play size={16} />{starting ? '正在启动…' : '自动处理并生成回复'}</button><span className="rw-muted">缺少数据或证据的事项会标为待处理，回复可继续编辑。</span></div>
+    </details>
+
+    <section className="rw-card">
+      <div className="rw-card-heading"><h2>逐条回复</h2><div className="rw-toolbar">
+        <select aria-label="审稿回复历史" disabled={dirty || saving} value={review?.id || ''} onChange={(e) => { const id = e.target.value; act(async () => choose((await request(`/reviews/${id}`)).review)); }}>
+          <option value="" disabled>选择一轮审稿意见</option>{reviews.filter((r) => r.scope?.mode === 'rebuttal').map((r) => <option key={r.id} value={r.id}>{stamp(r.created_at)} · {r.status}</option>)}
+        </select>
+        {responses.length > 0 && <><button disabled={busy || !dirty || saving} onClick={save}><Save size={15} />保存回复</button><button disabled={busy} onClick={download}><Download size={15} />导出回复</button></>}
+      </div></div>
+      {!review && <p className="rw-muted review-empty">审稿意见会在这里整理为「原文 → 处理记录 → 回复草稿」。粘贴意见后即可开始。</p>}
+      {review && <>
+        <div className="rw-toolbar" role="status"><Badge tone={busy ? 'warning' : ''}>{review.status === 'interrupted' ? phases.interrupted : phases[review.scope.phase] || review.status}</Badge><span>{responses.length} 条意见 · {responses.filter((r) => r.status === 'blocked').length} 条待处理</span>
+          {busy && <button onClick={() => act(async () => { await request(`/reviews/${review.id}/stop`, { method: 'POST', body: {} }); setNotice('已请求停止，已执行的修改与会话记录会保留'); })}><Square size={14} />停止处理</button>}
+        </div>
+        {review.scope.error && <p className="rw-error" role="alert">{review.scope.error}</p>}
+        {['failed', 'interrupted'].includes(review.status) && <button disabled={dirty} onClick={() => { setSource(review.scope.source); setInstructions(review.scope.instructions); setLanguage(review.scope.language); setIntakeOpen(true); setNotice('原文已载入上方，可重新启动处理；已有修改会保留，请结合会话记录核对。'); }}>载入原文重新处理</button>}
+        {review.scope.summary && <p className="review-summary">{review.scope.summary}</p>}
+        <details className="review-record"><summary>本轮审稿意见原文</summary><p className="review-summary">{review.scope.source}</p></details>
+        <div className="rw-toolbar">{(review.sessions || []).map((id, i) => <button key={id} onClick={() => select({ kind: 'session', id, title: i === 0 ? '拆解审稿意见' : '自动处理与回复' })}>{i === 0 ? '查看意见拆解会话' : '查看处理会话 / 处理授权'}</button>)}</div>
+        {dirty && <p className="rw-muted">有未保存的回复。保存后可以切换历史或开始新一轮。</p>}
+      </>}
+      {notice && <p className="rw-success" role="status">{notice}</p>}
+    </section>
+
+    {responses.map((r, index) => <article className="rw-card review-response" key={`${review.id}-${r.id}`}>
+      <div className="rw-card-heading"><h3>{r.reviewer} · 意见 {index + 1}</h3><Badge tone={r.status === 'blocked' ? 'warning' : ''}>{statuses[r.status]}</Badge></div>
+      <blockquote>{r.original}</blockquote>
+      <div className="review-analysis"><div><strong>意见要点</strong><p>{r.request}</p></div><div><strong>处理方案</strong><p>{r.action}</p></div></div>
+      {r.blocker && <p className="rw-warning">待处理：{r.blocker}</p>}
+      <Field label={`${r.reviewer} · 意见 ${index + 1} 回复草稿`}><textarea rows={7} disabled={busy || saving} value={edits[r.id] ?? r.response} onChange={(e) => { const value = e.target.value; setNotice(''); setEdits((current) => { const next = { ...current }; if (value === r.response) delete next[r.id]; else next[r.id] = value; return next; }); }} placeholder={busy ? 'Codex 处理完成后会自动填充回复…' : '填写或修改给审稿人的回复'} /></Field>
+      <details className="review-record" open={r.status === 'blocked'}><summary>证据、修改与验证记录</summary><dl><dt>依据</dt><dd>{r.evidence || '等待核查'}</dd><dt>实际修改</dt><dd>{r.changes || '尚无修改记录'}</dd><dt>验证结果</dt><dd>{r.validation || '尚无验证记录'}</dd></dl></details>
+    </article>)}
+
+    <div className="review-secondary"><ShieldCheck size={18} /><span>投稿前的多角色评议与问题排查在独立的对抗审查环节中进行。</span><button onClick={() => setStage('Polish')}>进入对抗审查</button></div>
+    <details className="rw-card" onToggle={(e) => setShowSubmission(e.currentTarget.open)}><summary>投稿记录与修订快照</summary>{showSubmission && <ReviewPreparation project={project} act={act} select={select} epoch={epoch} setStage={setStage} mode="submission" />}</details>
   </div>;
 }
