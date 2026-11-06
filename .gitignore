@@ -29,4 +29,5 @@ TODO.md
 .easyref/
 test-results/
 frontend/playwright-report/
+releases/
 !examples/research-schema/run.log

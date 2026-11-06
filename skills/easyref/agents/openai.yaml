@@ -1,0 +1,4 @@
+interface:
+  display_name: "EasyRef 科研工作台"
+  short_description: "启动完整科研界面，管理文献、构想、实验、论文和审稿回复"
+  default_prompt: "使用 $easyref 启动科研工作台，并基于当前项目继续研究。"

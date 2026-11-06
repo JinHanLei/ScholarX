@@ -1,6 +1,18 @@
 # EasyRef
 
-EasyRef 默认提供本地科研工作台：**Literature → Idea → Experiment → Paper → Review**，共用 Research Project、Codex 会话和证据关联。采用 React/Vite + Flask + SQLite/FTS5 + Git + 本地文件，不要求 Docker、Supabase 或独立 API Key。
+EasyRef 默认提供本地科研工作台：**Literature → Idea → Experiment → Paper → Polish → Review**，共用 Research Project、Codex 会话和证据关联。Polish 用于投稿前对抗审查，Review 用于回复真实审稿意见。采用 React/Vite + Flask + SQLite/FTS5 + Git + 本地文件，不要求 Docker 或 Supabase；应用内 AI 使用 Codex 登录，划词 API 翻译单独配置密钥。
+
+## Codex Skill（包含界面与后端）
+
+`skills/easyref` 是可维护的 skill 源码，包含启动入口和组件指南。安装前先在本仓库准备前端依赖，然后打包安装：
+
+```powershell
+python scripts/package_skill.py --output releases --install
+```
+
+发行 ZIP 包含已构建前端、后端、迁移和 CCF 注册表；不包含用户数据库、研究项目、密钥或依赖环境。安装到 `$CODEX_HOME/skills/easyref`（默认 `~/.codex/skills/easyref`），已有安装不会覆盖。重新加载技能列表后可用 `$easyref`；也可直接运行安装目录的 `scripts/launch.py`，默认访问 `http://127.0.0.1:5020`。首次启动安装独立 Python 依赖，使用者无需 Node。数据默认保存在用户应用数据目录 `EasyRef/data`，不会复制或接管已有 5000/5011–5016 实例。
+
+Skill 覆盖六阶段界面、项目设置/导入导出、科研 API 以及组件分支合并维护。Profile 仍属于旧版界面，尚未接入本地工作台。具体启动和升级方法见 [运行指南](skills/easyref/references/runtime.md)。
 
 ## 本地启动（Windows）
 
