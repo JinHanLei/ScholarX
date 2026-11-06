@@ -63,8 +63,9 @@ def test_pdf_link_rejects_local_addresses(monkeypatch):
 
 def test_codex_literature_helpers_use_read_only_sessions(client, project, services, monkeypatch):
     codex = services['codex']; calls = []
-    def create(pid, stage, role, context, read_only):
+    def create(pid, stage, role, context, read_only, web_search):
         assert read_only and stage == 'Literature'
+        assert web_search == 'disabled'
         ident = uid()
         services['store'].execute('INSERT INTO agent_sessions(id,project_id,role,stage,status,context_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)', (ident,pid,role,stage,'running',encode(context),now(),now()))
         return codex.session(ident)
