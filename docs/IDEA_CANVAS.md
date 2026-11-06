@@ -36,8 +36,10 @@ Idea 页面以 React Flow 模型图为中心，不包含聊天面板。讨论在
 ## 从当前 Codex 聊天操作模型
 
 使用当前实例的 API 地址。Idea 开发实例为 `http://127.0.0.1:5012/api`，主实例为
-`http://127.0.0.1:5000/api`；不能把不同实例的项目 ID 混用。页面的复制按钮可以
-复制准确的项目和模型上下文。先读取，确认项目，再修改：
+`http://127.0.0.1:5000/api`；不能把不同实例的项目 ID 混用。页面自动维护当前项目和
+模型上下文，Codex 直接通过 `GET /api/idea-context` 或下面的 `context` 命令读取，
+无需用户复制、粘贴项目 ID 或模型内容。返回值包含项目、当前模型完整草稿和修订号。
+先读取，确认项目，再修改：
 
 ```powershell
 python backend/scripts/idea_canvas.py --api-base http://127.0.0.1:5012/api context
