@@ -7,8 +7,9 @@ from app.local_paper_assist import utf16_slice
 def fake_codex(services, monkeypatch):
     store, codex = services['store'], services['codex']
     turns = []
-    def create(pid, stage, role, context, read_only=False):
+    def create(pid, stage, role, context, read_only=False, web_search=None):
         assert read_only is True
+        assert web_search in {None, 'disabled'}
         sid = uid()
         store.execute('INSERT INTO agent_sessions(id,project_id,role,stage,status,context_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)',
                       (sid, pid, role, stage, 'running', encode(context), now(), now()))

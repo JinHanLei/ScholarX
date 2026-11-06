@@ -59,7 +59,11 @@ multiple seeds of deterministic retrieval are not independent replications.
 
 ## 5. Bounded review and claim control
 
-Use EasyRef's Review workspace for fresh review sessions with specified scope.
+Use EasyRef's Polish (对抗审查) workspace for fresh pre-submission review sessions
+with specified scope; API calls must include `mode: "adversarial"`.
+Review (回复审稿人) instead takes real reviewer comments and creates editable,
+evidence-backed author replies. It must not invent reviewer comments or mark
+draft replies as human-verified resolutions.
 Review problem/novelty, leakage, fairness, reproducibility and claim support.
 Record actual session/model identity if returned; otherwise mark unknown. Role
 names do not imply different models or independent scientific validation.

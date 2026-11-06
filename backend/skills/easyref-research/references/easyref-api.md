@@ -13,7 +13,19 @@ does not imply successful adoption. Do not access another project's records.
 - POST `/papers`: accurate metadata `{title, authors: [names], year, doi, url,
   metadata:{abstract,accessed_at}}` for a missing personal reference. Response `{id}`; follow with
   library call. Personal references do not acquire a CCF ranking by assertion.
-- GET `/projects/{project_id}/components?kind=idea` (or blueprint/claim/table).
+- For current Idea designs, first GET `/idea-context`, then GET
+  `/projects/{project_id}/ideas/{idea_id}` for the complete document and revision.
+  PUT that URL with `{document,expected_revision}` saves a draft only. Record
+  settled decisions atomically through its `/records` endpoint, preserving stable
+  IDs and an idempotent record UUID. Only explicit version submission authorizes
+  POST to its `/versions` endpoint, which starts the shared Vn execution pipeline.
+  See `app/docs/IDEA_CANVAS.md` and `app/docs/IDEA_FIGURES.md` in the outer package,
+  or repository `docs/` when running from source. Do not edit Idea via generic
+  proposals or derived export files when the versioned Idea API applies.
+- GET `/projects/{project_id}/experiment-results` for actual versioned results;
+  `/projects/{project_id}/experiments/{run_id}/tracking` for MLflow telemetry.
+  Mapping a report or adding a note does not authorize new execution.
+- GET `/projects/{project_id}/components?kind=blueprint` (or claim/table).
   Propose changes via `.easyref/proposals/name.json` rather than overwriting
   exports. For new components use `{kind,name,data,purpose}`; for edits also
   supply `component_id` and its current `expected_revision`.
@@ -38,10 +50,16 @@ does not imply successful adoption. Do not access another project's records.
   actual metrics. Empty metrics are not a scientific success. Failed runs are
   retained; corrected code requires a NEW registration, never rewritten history.
 - GET `/experiments/compare?left={id}&right={id}` returns protocol differences.
-- POST `/projects/{project_id}/reviews`: `{roles:["Methodology Reviewer"],
+- POST `/projects/{project_id}/reviews`: `{mode:"adversarial",roles:["Methodology Reviewer"],
   max_rounds:1,max_seconds:600,instructions,selected:[{kind,id}]}`. Fresh
   read-only sessions; structured findings remain in Review. Do not recursively
   start reviews from a reviewer session. GET `/reviews/{id}` tracks results.
+- For author replies (Review), use the same POST endpoint with
+  `{mode:"rebuttal",source:"actual reviewer text",language:"English",instructions}`.
+  This can edit project files and run local checks; invoke only for requested
+  response processing. Poll GET `/reviews/{id}`; preserve comment IDs and evidence.
+  PATCH `/reviews/{id}/responses` with `{revision,responses:[{id,response}]}`
+  saves edits after processing. No automatic journal submission is performed.
 - POST `/projects/{project_id}/paper/import`: `{filename:"main.tex",source}`
   creates a new anchored `.tex` under `paper/`. Response is document with `path`,
   `source`, `sha256`, `paragraphs`. Refuses overwriting an existing filename.

@@ -50,7 +50,7 @@ def main():
         if args.review:
             doc=services['paper'].import_source(project['id'],'review-test-'+str(int(time.time()))+'.tex','\\documentclass{article}\n\\begin{document}\n\\section{Results}\nThis TEST manuscript claims 99 percent accuracy, but supplies no experiment or citation.\n\\end{document}')
             pid=doc['paragraphs'][0]['id']
-            review=services['reviews'].start(project['id'],{'roles':['Experiment Reviewer'],'selected':[{'kind':'paragraph','id':pid}], 'instructions':'Review only the selected TEST DATA paragraph. The unsupported accuracy statement is deliberately present to test issue registration. Identify the missing evidence, using the exact selected paragraph ID. Do not review application code or call other skills.','max_rounds':1,'max_seconds':300})
+            review=services['reviews'].start(project['id'],{'mode':'adversarial','roles':['Experiment Reviewer'],'selected':[{'kind':'paragraph','id':pid}], 'instructions':'Review only the selected TEST DATA paragraph. The unsupported accuracy statement is deliberately present to test issue registration. Identify the missing evidence, using the exact selected paragraph ID. Do not review application code or call other skills.','max_rounds':1,'max_seconds':300})
             deadline=time.monotonic()+305
             while services['reviews'].get(review['id'])['status']=='running' and time.monotonic()<deadline: time.sleep(1)
             result['review']=services['reviews'].get(review['id'])
