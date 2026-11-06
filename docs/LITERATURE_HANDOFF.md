@@ -46,3 +46,18 @@
 ## 阅读时隐藏底部导航
 
 本记录所在提交接续 `7268992`，只修改 Literature 专用样式：PDF 阅读期间隐藏底部阶段导航并释放该行空间，返回列表自动恢复。无共享文件、后端、迁移或依赖变更。前端构建通过；浏览器确认阅读区延伸到视口底部，返回列表恢复导航，再次阅读重新隐藏。此轮仅调整样式，未重复运行后端测试。截图：`logs/pdf-reader-no-footer.png`。分支仍为 `codex/literature`，尚未合入 `main`。
+
+## OpenAI API 划词翻译与 Logo 配置
+
+接续 `67aac1d`，在 `codex/literature` 按顺序合入：
+
+1. `d1e9ab5`：Literature 功能。划词翻译直接调用 OpenAI Responses API，逐段显示译文，支持停止与可读的错误提示；不再为翻译创建 Codex 会话。增加配置弹窗与实例级设置接口。PDF 自动抓取和文献检索继续使用原有流程。
+2. 本记录所在的共享接线提交：唯一共享代码文件 `frontend/src/components/research/ResearchWorkbench.jsx`，将 EasyRef Logo 设为配置入口，挂载弹窗，并向阅读器传递打开配置的回调。需要与上一项一并合入，才能使用完整入口。
+
+配置包含 API Key、API 地址和模型，默认官方地址与 `gpt-5.4-mini`，可手动修改。自定义地址需支持 Responses API。保存仅写入当前实例的 `private/translation.json`，不会进行连接测试，不写入项目文件、数据库或浏览器本地存储。Windows 使用当前用户 DPAPI 加密密钥；其他系统使用权限为 0600 的本地文件。读取配置不返回密钥，支持留空保留、更新和移除；更换 API 地址须重新提供对应密钥。翻译只发送用户选文与固定翻译指令，设置 `store: false`。没有迁移、依赖或全局 Codex 配置变更。
+
+验证：`test_literature_translation.py` 与 `test_literature_list.py` 共 30 项通过；前端构建通过（已有 bundle 大小提示）；现有 research-links 单元测试 2 项通过。后端测试使用临时目录和模拟网络响应，覆盖密钥保存/加密/脱敏、设置校验、流式输出、鉴权/配额/超时/中断提示、缺少密钥阻止调用及不创建 Codex 会话。浏览器已确认 Logo 弹窗、空密钥禁用保存、PDF 选文的配置入口，以及阅读页继续隐藏底部导航。截图：`logs/openai-api-settings-final.png`。
+
+隔离服务已更新并运行于 <http://127.0.0.1:5011/>。按用户要求，尚未填入真实密钥，也未请求真实 OpenAI API；实际翻译质量、首字延迟和总耗时留待用户填写配置后验证。未运行全量浏览器套件。尚未合入或推送 `main`。
+
+接口依据：[Responses 流式事件](https://developers.openai.com/api/docs/guides/streaming-responses)、[GPT-5.4 mini 模型配置](https://developers.openai.com/api/docs/models/gpt-5.4-mini)。

@@ -3,6 +3,7 @@ import { BookOpen, Lightbulb, FlaskConical, FileText, ShieldCheck, PanelRightClo
 import { request, Field, Empty, Badge, short } from './shared.jsx';
 import { downloadApiFile } from '../../utils/api.js';
 import LiteratureWorkspace from './LiteratureWorkspace.jsx';
+import LiteratureApiSettings from './LiteratureApiSettings.jsx';
 import IdeaWorkspace from './IdeaWorkspace.jsx';
 import ExperimentWorkspace from './ExperimentWorkspace.jsx';
 import PaperWorkspace from './PaperWorkspace.jsx';
@@ -20,6 +21,7 @@ export default function ResearchWorkbench() {
   const [stage, setStage] = useState(localStorage.getItem('easyref.workspace') || 'Literature');
   const [status, setStatus] = useState(null); const [error, setError] = useState(''); const [busy, setBusy] = useState(0);
   const [creating, setCreating] = useState(false);
+  const [translationSettingsOpen, setTranslationSettingsOpen] = useState(false);
   const [transfer, setTransfer] = useState(null);
   const [collapsed, setCollapsed] = useState(true); const [selection, setSelection] = useState(null); const [epoch, setEpoch] = useState(0);
   const [git, setGit] = useState(null); const [checkpoint, setCheckpoint] = useState('');
@@ -44,7 +46,7 @@ export default function ResearchWorkbench() {
   return <div className={`research-shell ${collapsed ? 'assistant-collapsed' : ''}`}>
     <header className="rw-topbar">
       <div className="rw-topline">
-        <div className="rw-brand"><span className="rw-brand-mark"><BookOpen size={19} /></span><strong>EasyRef</strong></div>
+        <button type="button" className="rw-brand lit-api-logo" aria-label="OpenAI API 设置" title="OpenAI API 设置" aria-haspopup="dialog" onClick={() => setTranslationSettingsOpen(true)}><span className="rw-brand-mark"><BookOpen size={19} /></span><strong>EasyRef</strong></button>
         <div className="rw-explore"><span>一起探索</span><button type="button" className="rw-project-name" aria-label={project ? `项目设置：${project.name}` : '创建第一个项目'} aria-haspopup="dialog" title={project?.name || '创建第一个项目'} onClick={() => project ? setSettingsOpen(true) : setCreating(true)}>{project?.name || '你的下一篇论文'}</button></div>
         <button type="button" className="rw-add-project" title="新增项目" aria-label="新增项目" aria-haspopup="dialog" onClick={() => { setSettingsOpen(false); setCreating(true); }}><Plus size={20} /></button>
       </div>
@@ -54,13 +56,14 @@ export default function ResearchWorkbench() {
 
       {error && <div className="rw-error-banner" role="alert"><span>{error}</span><button onClick={() => setError('')}>关闭</button></div>}
       <div className={`rw-content ${stage === 'Literature' ? 'lit-content' : ''}`}>{!project && stage !== 'Literature' ? <Empty><FolderGit2 size={36} /><h2>从一个真实研究项目开始</h2><p>创建本地项目，或导入已有 Git 与 LaTeX 工程。五个工作区共享同一份研究上下文。</p><button className="rw-primary" onClick={() => setCreating(true)}>创建研究项目</button></Empty> : <React.Fragment key={pid}>
-        {stage === 'Literature' && <LiteratureWorkspace {...common} />}
+        {stage === 'Literature' && <LiteratureWorkspace {...common} onOpenApiSettings={() => setTranslationSettingsOpen(true)} />}
         {stage === 'Idea' && <IdeaWorkspace {...common} />}
         {stage === 'Experiment' && <ExperimentWorkspace {...common} selection={selection} />}
         {stage === 'Paper' && <PaperWorkspace {...common} selection={selection} />}
         {stage === 'Review' && <ReviewWorkspace {...common} setStage={setStage} />}
       </React.Fragment>}</div>
     </main>
+    {translationSettingsOpen && <LiteratureApiSettings onClose={() => setTranslationSettingsOpen(false)} />}
     {transfer && <ResearchProjectTools initialMode={transfer} onClose={() => setTransfer(null)} project={project} stage={stage} act={act} select={(value) => { setTransfer(null); select(value); }} onImported={async (p) => { await reload(); setPid(p.id); setEpoch((v) => v + 1); setTransfer(null); }} />}
     {(creating || (settingsOpen && project)) && <ResearchProjectDialog key={creating ? 'new-project' : pid} creating={creating} project={creating ? null : project} projects={projects} onSwitch={(id) => { setPid(id); setCheckpoint(''); }} onClose={() => { setCreating(false); setSettingsOpen(false); }} onSaved={savedProject} onTransfer={(mode) => { setCreating(false); setSettingsOpen(false); setTransfer(mode); }}>
       {!creating && <div className="rw-project-maintenance"><Field label="Checkpoint 说明"><input value={checkpoint} onChange={(e) => setCheckpoint(e.target.value)} /></Field><button type="button" disabled={!checkpoint.trim() || busy > 0} onClick={() => act(async () => { await request(`/projects/${pid}/git/checkpoint`, { method: 'POST', body: { message: checkpoint } }); setCheckpoint(''); setEpoch((n) => n + 1); })}>保存 Git Checkpoint</button><pre className="rw-git-status">{git?.changes || '工作目录干净'}</pre><div className="rw-toolbar"><button type="button" onClick={() => act(() => downloadApiFile('/backup', { method: 'POST', body: {} }, 'EasyRef-backup.sqlite3'))}><Download size={14} /> 备份</button><button type="button" onClick={() => act(reload)}><RefreshCw size={14} /> 刷新</button><small>{git?.branch} · {short(git?.commit)}</small></div>{error && <p className="rw-error" role="alert">{error}</p>}</div>}
