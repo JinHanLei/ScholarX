@@ -19,7 +19,7 @@ export default function LiteratureSearch({ mode, initialQuery = '', project, onC
     const version = ++generation.current;
     setBusy(true); setError('');
     try {
-      const response = await request('/literature/search?' + new URLSearchParams({ ...params, offset, limit: 30 }));
+      const response = await request('/literature/search?' + new URLSearchParams({ ...params, ...(project ? { project_id: project.id } : {}), offset, limit: 30 }));
       if (version === generation.current) { setResult(response); setSearched(params); }
     } catch (e) { if (version === generation.current) setError(e.message); }
     finally { if (version === generation.current) setBusy(false); }
@@ -51,7 +51,7 @@ export default function LiteratureSearch({ mode, initialQuery = '', project, onC
     </>}
     {busy && <div className="lit-search-progress" role="status">正在查询数据库…</div>}
     {error && <p role="alert" className="rw-dialog-error">{error}</p>}
-    <LiteratureSearchResults key={revision} result={result} project={project} onAdded={onAdded} busy={busy} onPage={(offset) => run(searched, offset)} />
+    <LiteratureSearchResults key={revision} result={result} project={project} onAdded={() => { onAdded(); run(searched, result?.offset || 0); }} busy={busy} onPage={(offset) => run(searched, offset)} />
     {!project && <p className="rw-muted">先创建一个项目，即可保存自选文献。</p>}
   </ResearchModal>;
 }

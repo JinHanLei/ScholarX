@@ -69,3 +69,52 @@ def test_catalog_rejects_nonlocal_or_credentialled_urls(client, services, monkey
     (services['store'].root / 'literature-catalog.json').write_text(json.dumps({'api_url': url}), 'utf-8')
     assert client.get('/api/literature/search').status_code == 400
     get.assert_not_called()
+
+
+def test_search_selection_is_project_scoped_and_excludes_archived_papers(client, project):
+    other = client.post('/api/projects', json={'name': 'Other collection'}).json['project']['id']
+    ids = {name: client.post('/api/papers', json={'title': name + ' graph', 'year': 2024}).json['id']
+           for name in ('Selected', 'Archived', 'Other', 'Uncollected')}
+    for name, pid in [('Selected', project['id']), ('Archived', project['id']), ('Other', other)]:
+        assert client.post(f"/api/papers/{ids[name]}/library", json={'project_id': pid}).status_code == 200
+    assert client.patch(f"/api/projects/{project['id']}/library/{ids['Archived']}", json={'archived': True}).status_code == 200
+    query = {'q': 'graph', 'project_id': project['id']}
+    result = client.get('/api/literature/search', query_string=query).json
+    assert result['total'] == 4 and result['selected_total'] == 1
+    assert {p['id'] for p in result['papers'] if p['in_library']} == {ids['Selected']}
+    page = client.get('/api/literature/search', query_string={**query, 'sort': 'title', 'offset': 1, 'limit': 1}).json
+    assert page['selected_total'] == 1 and len(page['papers']) == 1
+    assert not page['papers'][0]['in_library']
+    filtered = client.get('/api/literature/search', query_string={**query, 'year_from': 2025}).json
+    assert filtered['selected_total'] == 0
+    result = client.get('/api/literature/search', query_string={**query, 'project_id': other}).json
+    assert result['selected_total'] == 1
+    assert {p['id'] for p in result['papers'] if p['in_library']} == {ids['Other']}
+    # Restoring an archived paper makes it selected on the next search.
+    client.post(f"/api/papers/{ids['Archived']}/library", json={'project_id': project['id']})
+    assert client.get('/api/literature/search', query_string=query).json['selected_total'] == 2
+
+
+def test_catalog_selection_matches_persisted_identity_across_pages_and_projects(client, project, services, monkeypatch):
+    originals = [
+        {'title': 'Graph original DOI', 'doi': '10.1234/selection', 'year': 2024},
+        {'title': 'Graph original key', 'dblp_key': 'conf/test/selection', 'year': 2024},
+    ]
+    for paper in originals:
+        ident = client.post('/api/papers', json=paper).json['id']
+        client.post(f'/api/papers/{ident}/library', json={'project_id': project['id']})
+    connect(services, monkeypatch, [
+        {'id': 'remote-doi', 'title': 'Graph different title DOI', 'authors': [], 'doi': originals[0]['doi']},
+        {'id': 'remote-key', 'title': 'Graph different title key', 'authors': [], 'dblp_key': originals[1]['dblp_key']},
+    ], total=101)
+    query = {'q': 'graph', 'project_id': project['id'], 'offset': 30, 'limit': 30}
+    result = client.get('/api/literature/search', query_string=query).json
+    assert result['papers'] == [] and result['selected_total'] == 2
+    assert all(p['in_library'] for p in result['catalog']['papers'])
+    other = client.post('/api/projects', json={'name': 'Empty collection'}).json['project']['id']
+    result = client.get('/api/literature/search', query_string={**query, 'project_id': other}).json
+    assert result['selected_total'] == 0
+    assert not any(p['in_library'] for p in result['catalog']['papers'])
+    result = client.get('/api/literature/search', query_string={'q': 'graph'}).json
+    assert result['selected_total'] == 0
+    assert not any(p['in_library'] for p in result['catalog']['papers'])

@@ -23,14 +23,17 @@ export default function LiteratureSearchResults({ result, project, onAdded, busy
   };
   if (!result) return null;
   return <>
-    <div className="lit-results-caption"><strong>{result.catalog ? `DBLP 数据库 ${result.catalog.total.toLocaleString()} 篇 · 本机 ${result.total.toLocaleString()} 篇` : `数据库 ${result.total.toLocaleString()} 篇`}</strong></div>
+    <div className="lit-results-caption"><strong>{result.catalog ? `DBLP 数据库 ${result.catalog.total.toLocaleString()} 篇` : `数据库 ${result.total.toLocaleString()} 篇`}{` · 自选 ${(result.selected_total || 0).toLocaleString()} 篇`}</strong></div>
     {error && <p className="rw-dialog-error" role="alert">{error}</p>}
-    <div className="lit-results">{papers.map((paper) => <article key={paper.id}>
+    <div className="lit-results">{papers.map((paper) => {
+      const selected = paper.in_library || added.has(paper.id);
+      return <article key={paper.id}>
       <div><h3>{articleUrl(paper) ? <a href={articleUrl(paper)} target="_blank" rel="noreferrer">{paper.title}</a> : paper.title}</h3>
-        <p><span className="lit-source-badge">{paper.from_catalog ? 'DBLP' : '本机'}</span>{paper.year || '年份未知'} · {paper.venue_name || '未注明期刊 / 会议'} {paper.rank && <Badge>CCF {paper.rank}</Badge>}</p>
+        <p><span className="lit-source-badge">{selected ? '自选' : paper.from_catalog ? 'DBLP' : '数据库'}</span>{paper.year || '年份未知'} · {paper.venue_name || '未注明期刊 / 会议'} {paper.rank && <Badge>CCF {paper.rank}</Badge>}</p>
         <small>{(paper.authors || []).join(', ')}</small></div>
-      <button type="button" aria-label={`加入自选：${paper.title}`} disabled={!project || added.has(paper.id) || Boolean(adding)} onClick={() => add(paper)}>{added.has(paper.id) ? <Check size={16} /> : <Plus size={16} />}{added.has(paper.id) ? '已加入' : '自选'}</button>
-    </article>)}{!papers.length && !busy && <Empty><Search size={28} /><h3>没有匹配的文献</h3><p>试试减少关键词或放宽筛选条件。</p></Empty>}</div>
+      <button type="button" className={selected ? 'is-selected' : ''} aria-label={`${selected ? '已自选' : '加入自选'}：${paper.title}`} disabled={!project || selected || Boolean(adding)} onClick={() => add(paper)}>{selected ? <Check size={16} /> : <Plus size={16} />}{selected ? '已自选' : '自选'}</button>
+    </article>;
+    })}{!papers.length && !busy && <Empty><Search size={28} /><h3>没有匹配的文献</h3><p>试试减少关键词或放宽筛选条件。</p></Empty>}</div>
     {onPage && total > limit && <div className="rw-pagination rw-toolbar"><button type="button" disabled={busy || !offset} onClick={() => onPage(Math.max(0, offset - limit))}>上一页</button><span>{offset + 1}–{Math.min(offset + limit, total)} / {total.toLocaleString()}</span><button type="button" disabled={busy || offset + limit >= total} onClick={() => onPage(offset + limit)}>下一页</button></div>}
   </>;
 }

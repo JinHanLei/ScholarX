@@ -40,6 +40,18 @@ class LiteratureCatalog:
         params = {key: args[key] for key in ('q', 'rank', 'venue_id', 'venue_name', 'type', 'year', 'year_from',
                   'year_to', 'author', 'discipline', 'sort', 'offset', 'limit') if key in args}
         local = self.literature.search({**params, 'source': 'all'})
+        selected_ids = set()
+        local['selected_total'] = 0
+        if args.get('project_id'):
+            pid = args['project_id']
+            self.store.project(pid)
+            selected_ids = {row['paper_id'] for row in self.store.all(
+                'SELECT paper_id FROM paper_library_entries WHERE project_id=? AND archived=0', (pid,))}
+            if selected_ids:
+                local['selected_total'] = self.literature.search({**params, 'source': 'all',
+                    'project_id': pid, 'archived': '0', 'offset': 0, 'limit': 1})['total']
+        for paper in local['papers']:
+            paper['in_library'] = paper['id'] in selected_ids
         base = self.api_url()
         if not base:
             return local
@@ -66,7 +78,13 @@ class LiteratureCatalog:
                 self.candidates.move_to_end((base, row['id']))
                 while len(self.candidates) > 2000:
                     self.candidates.popitem(last=False)
-            papers.append(paper)
+            existing = None
+            if selected_ids:
+                if paper.get('dblp_key'):
+                    existing = self.store.one('SELECT id FROM papers WHERE dblp_key=?', (paper['dblp_key'],))
+                if not existing:
+                    existing = existing_reference(self.store, {**paper, 'url': paper.get('dblp_url') or ''})
+            papers.append({**paper, 'in_library': bool(existing and existing['id'] in selected_ids)})
         return {**local, 'catalog': {'papers': papers, 'total': data['total'], 'offset': local['offset'], 'limit': local['limit']}}
 
     def collect(self, pid, ident):

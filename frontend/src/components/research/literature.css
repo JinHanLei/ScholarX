@@ -86,6 +86,7 @@
 .lit-results article p{font-size:11px;color:#a294af;margin-top:7px}
 .lit-results article small{display:block;margin-top:4px;font-size:10px;color:#b1a5bd}
 .lit-results article>button{flex:none;color:#987ab5;border-color:#e8ddf2;background:#fbf8fe;font-size:11px}
+.research-shell .lit-results article>button.is-selected:disabled{background:#f3f4f6;border-color:#e5e7eb;color:#9296a0;opacity:1;cursor:default}
 .lit-natural .rw-field{margin-top:0}
 .lit-natural>small{display:block;margin-top:12px;font-size:11px;color:#a69bb4}
 .lit-explanation{padding:12px 14px;margin:14px 0!important;border-radius:8px;background:#f8f4fc;font-size:12px;color:#8f78a6}

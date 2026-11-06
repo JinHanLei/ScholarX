@@ -10,7 +10,7 @@ Literature 开发实例为 `http://127.0.0.1:5011/api`，使用该 worktree 独�
 
 ## 数据库检索和加入自选
 
-1. `GET /literature/search?q=graph&rank=A&year_from=2023&limit=30&offset=0`。可选过滤参数包括 `author`、`venue_name`、`type`、`year_to`；`type` 为 `Conference` 或 `Journal`。
+1. `GET /literature/search?q=graph&rank=A&year_from=2023&limit=30&offset=0&project_id=<project_id>`。可选过滤参数包括 `author`、`venue_name`、`type`、`year_to`；`type` 为 `Conference` 或 `Journal`。传入目标项目 ID 后，`selected_total` 返回匹配当前筛选条件的未归档自选数量，各结果的 `in_library` 标记是否已在该项目自选中；已自选结果无需重复收藏。不传项目 ID 时不推断自选状态。
 2. 当前实例的结果在 `papers`，可选外部主库结果在 `catalog.papers`。外部主库通过已有本机服务只读查询，不共用 SQLite 文件。
 3. 当前实例结果：`POST /papers/<id>/library`，JSON 为 `{"project_id":"目标项目 ID"}`。
 4. 外部主库结果：`POST /projects/<project_id>/literature/catalog/collect`，JSON 为 `{"catalog_id":"检索结果中的 catalog_id"}`。必须先查询取得候选；服务重启或候选过期后重新查询。该操作只写当前实例。
