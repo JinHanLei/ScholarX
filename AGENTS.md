@@ -48,8 +48,10 @@ because a shared file is needed.
   use the live Idea API/`backend/scripts/idea_canvas.py` described in
   `docs/IDEA_CANVAS.md`. First read the active context at the correct instance
   (Idea development: port 5012), verify the project, then read the current
-  document/revision. Preserve stable node IDs and user layout. Saving a semantic
-  change automatically versions and executes it; do not add another sync approval.
+  document/revision. Preserve stable node IDs and user layout. Save model edits
+  as drafts only. The user clicks “保存为版本” to create the shared Idea/Experiment
+  version and start execution. Do not call the publish endpoint or CLI command
+  unless the user explicitly requests version submission; editing alone is not authorization.
   Never substitute edits to application source, SQLite, or research export files
   for updating the user's model canvas.
 
