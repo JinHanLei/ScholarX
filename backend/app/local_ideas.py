@@ -376,10 +376,17 @@ class IdeaService:
             "Do not install dependencies or rent compute automatically. Do not start training yourself: the executor starts returned runs. "
             "For a ready implementation, return 1-12 runs using python/node/Rscript script argv, workspace-relative cwd and metrics_path. "
             "Each script must read EASYREF_CONFIG (JSON file) and write real finite numeric results to EASYREF_METRICS_PATH. "
+            "For Python training, import log_metrics from easyref_tracking (supplied on PYTHONPATH by the executor; no install needed), "
+            "then log_metrics({'train/loss': actual_loss, 'validation/loss': actual_validation_loss}, step=epoch) at actual evaluation steps. "
+            "Log only measurements the method actually computes; do not invent validation metrics. "
+            "For Node/R, append UTF-8 JSON lines {metrics:{name:number},step:integer,timestamp:unix_milliseconds} "
+            "to a process-specific file training-<pid>.jsonl under EASYREF_TRACKING_DIR, if that environment variable is set. "
+            "The executor records resource metrics and binds MLflow to this exact version/run. Do not create an unrelated MLflow run. "
+            "Intermediate curves are not final results: still write the final evaluated metrics to EASYREF_METRICS_PATH. "
             "At runtime these two absolute paths are supplied by EasyRef and are OUTSIDE the isolated source workspace, within the same project. "
             "Reading EASYREF_CONFIG and writing EASYREF_METRICS_PATH are explicitly required and authorized; do not reject them because they are outside the workspace. "
             "Do not modify source files while an experiment runs; store any additional runtime outputs beside EASYREF_METRICS_PATH. "
-            "Keep hyperparameters in config files in the workspace; return an empty hyperparameters object. "
+            "Keep hyperparameters in config files in the workspace and return the actual important hyperparameters in each run config. "
             "Use explicit dataset, split, seed and evaluation_protocol. No network uploads. Return only the requested JSON."
         )
         self.codex.turn(session['id'], prompt, output_schema=PLAN_SCHEMA)

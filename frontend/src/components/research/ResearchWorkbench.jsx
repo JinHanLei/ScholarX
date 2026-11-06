@@ -46,7 +46,7 @@ export default function ResearchWorkbench() {
     if (creating) setStage('Idea');
     setCreating(false); setSettingsOpen(false); setCheckpoint(''); setEpoch((value) => value + 1);
   };
-  return <div className={`research-shell ${collapsed || stage === 'Idea' ? 'assistant-collapsed' : ''}`}>
+  return <div className={`research-shell ${collapsed || ['Idea', 'Experiment'].includes(stage) ? 'assistant-collapsed' : ''}`}>
     <header className="rw-topbar">
       <div className="rw-topline">
         <button type="button" className="rw-brand lit-api-logo" aria-label="OpenAI API 设置" title="OpenAI API 设置" aria-haspopup="dialog" onClick={() => setTranslationSettingsOpen(true)}><span className="rw-brand-mark"><BookOpen size={19} /></span><strong>EasyRef</strong></button>
@@ -55,13 +55,13 @@ export default function ResearchWorkbench() {
       </div>
     </header>
     <main className={`rw-main ${stage === 'Literature' ? 'lit-main' : ''}`}>
-      {!['Literature', 'Idea'].includes(stage) && <header className="rw-header"><div><div className="rw-breadcrumb">{project?.name || 'EasyRef'} <span>/</span> {stage}</div><h1>{stages.find(([key]) => key === stage)?.[1]}</h1>{stage === 'Literature' && <span className="rw-dblp-date" title={status?.dblp?.imported_at ? `最近完整导入：${new Date(status.dblp.imported_at).toLocaleString()}` : '尚无完整导入记录'}><Database size={11} /> DBLP 截至 {status?.dblp?.cutoff || '未标注'}{status?.dblp?.imported_at && <small> · 更新 {new Date(status.dblp.imported_at).toLocaleDateString('sv-SE')}</small>}</span>}</div><div className="rw-toolbar">{busy > 0 && <span className="rw-working" role="status">处理中…</span>}<Badge tone="local">LOCAL</Badge><button className="rw-icon" title={collapsed ? '展开 Codex Assistant' : '折叠 Codex Assistant'} onClick={() => setCollapsed(!collapsed)}>{collapsed ? <PanelRightOpen size={20} /> : <PanelRightClose size={20} />}</button></div></header>}
+      {!['Literature', 'Idea', 'Experiment'].includes(stage) && <header className="rw-header"><div><div className="rw-breadcrumb">{project?.name || 'EasyRef'} <span>/</span> {stage}</div><h1>{stages.find(([key]) => key === stage)?.[1]}</h1>{stage === 'Literature' && <span className="rw-dblp-date" title={status?.dblp?.imported_at ? `最近完整导入：${new Date(status.dblp.imported_at).toLocaleString()}` : '尚无完整导入记录'}><Database size={11} /> DBLP 截至 {status?.dblp?.cutoff || '未标注'}{status?.dblp?.imported_at && <small> · 更新 {new Date(status.dblp.imported_at).toLocaleDateString('sv-SE')}</small>}</span>}</div><div className="rw-toolbar">{busy > 0 && <span className="rw-working" role="status">处理中…</span>}<Badge tone="local">LOCAL</Badge><button className="rw-icon" title={collapsed ? '展开 Codex Assistant' : '折叠 Codex Assistant'} onClick={() => setCollapsed(!collapsed)}>{collapsed ? <PanelRightOpen size={20} /> : <PanelRightClose size={20} />}</button></div></header>}
 
       {error && <div className="rw-error-banner" role="alert"><span>{error}</span><button onClick={() => setError('')}>关闭</button></div>}
       <div className={`rw-content ${stage === 'Literature' ? 'lit-content' : ''}`}>{!project && stage !== 'Literature' ? <Empty><FolderGit2 size={36} /><h2>从一个真实研究项目开始</h2><p>创建本地项目，或导入已有 Git 与 LaTeX 工程。五个工作区共享同一份研究上下文。</p><button className="rw-primary" onClick={() => setCreating(true)}>创建研究项目</button></Empty> : <React.Fragment key={pid}>
         {stage === 'Literature' && <LiteratureWorkspace {...common} onOpenApiSettings={() => setTranslationSettingsOpen(true)} />}
         {stage === 'Idea' && <IdeaWorkspace {...common} onExperiment={openExperiment} />}
-        {stage === 'Experiment' && <ExperimentWorkspace {...common} selection={selection} ideaVersion={ideaVersion} onIdea={() => setStage('Idea')} />}
+        {stage === 'Experiment' && <ExperimentWorkspace key={pid} {...common} selection={selection} ideaVersion={ideaVersion} onIdea={() => setStage('Idea')} />}
         {stage === 'Paper' && <PaperWorkspace {...common} selection={selection} />}
         {stage === 'Review' && <ReviewWorkspace {...common} setStage={setStage} />}
       </React.Fragment>}</div>
@@ -73,6 +73,6 @@ export default function ResearchWorkbench() {
     </ResearchProjectDialog>}
     <IdeaProgressBar project={project} onExperiment={openExperiment} />
     <nav className="rw-progress" aria-label="研究阶段进度">{stages.map(([key, label, Icon], index) => { const keys = { Literature: ['literature'], Idea: ['problem'], Experiment: ['protocol', 'experiments'], Paper: ['paper'], Review: ['review'] }[key]; const states = workflow?.stale ? [] : keys.map((k) => workflow?.phases?.[k]?.status); const progress = states.length && states.every((s) => s === 'completed') ? 'completed' : states.includes('running') ? 'running' : 'pending'; const text = { completed: '已结束', running: '进行中', pending: '未进行' }[progress]; return <div className={`rw-progress-step ${progress}`} key={key}><button className={stage === key ? 'selected' : ''} aria-label={`${key} ${label}`} aria-current={stage === key ? 'step' : undefined} title={`${label} · ${text}`} onClick={() => { window.dispatchEvent(new Event('easyref:flush-idea')); setStage(key); }}><span className="rw-progress-light" /><Icon size={17} /><span>{key}</span><span className="rw-sr-only">{text}</span></button>{index < stages.length - 1 && <ChevronRight className="rw-progress-arrow" size={15} />}</div>; })}</nav>
-    {stage !== 'Idea' && !collapsed && <ResearchAssistant onClose={() => setCollapsed(true)} key={pid || 'empty'} project={project} stage={stage} selection={selection} setSelection={setSelection} act={act} refresh={() => setEpoch((n) => n + 1)} />}
+    {!['Idea', 'Experiment'].includes(stage) && !collapsed && <ResearchAssistant onClose={() => setCollapsed(true)} key={pid || 'empty'} project={project} stage={stage} selection={selection} setSelection={setSelection} act={act} refresh={() => setEpoch((n) => n + 1)} />}
   </div>;
 }

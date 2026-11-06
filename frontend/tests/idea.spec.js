@@ -80,8 +80,8 @@ test('only explicit publication binds decisions to a shared version and an outda
   await page.getByRole('button', { name: '保存为版本', exact: true }).click();
   await expect(page.locator('.idea-journal-version').first()).toContainText('V2');
   await page.getByTitle('查看 V2 对应实验').click();
-  await expect(page.locator('.idea-experiment-state')).toContainText('对应 Idea V2');
-  await page.getByRole('button', { name: '返回模型图' }).click();
+  await expect(page.locator('.experiment-version-summary')).toContainText('V2');
+  await page.getByRole('button', { name: '查看 Idea', exact: true }).click();
   await page.locator('.idea-journal-version').last().locator('summary').click();
   await page.locator('.idea-journal-version').last().getByRole('button', { name: '查看此版模型图', exact: true }).click();
   await expect(page.locator('.idea-history-banner')).toContainText('正在查看 V1');

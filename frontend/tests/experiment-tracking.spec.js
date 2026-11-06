@@ -1,0 +1,57 @@
+import { test, expect } from '@playwright/test';
+
+test('MLflow shows live curves, resources and exact version bindings without replacing final results', async ({ page, request }) => {
+  const response = await request.post('/api/testing/experiment-tracking-fixture');
+  test.skip(response.status() === 404, 'Use the isolated experiment UI test server.');
+  expect(response.ok()).toBeTruthy(); const fixture = await response.json();
+  const errors = []; page.on('pageerror', (e) => errors.push(e.message));
+  const executions = []; page.on('request', (r) => { if (r.method() === 'POST' && /\/(start|retry|versions)$/.test(r.url())) executions.push(r.url()); });
+  await page.addInitScript((id) => { localStorage.setItem('easyref.project', id); localStorage.setItem('easyref.workspace', 'Experiment'); }, fixture.project);
+  await page.goto('/');
+  await page.getByLabel('显示系统测试数据').check();
+  await page.getByLabel('Ours 版本').selectOption(fixture.v2);
+  await expect(page.locator('.experiment-comparison')).toContainText('运行中');
+  await page.getByRole('button', { name: /监控验收 V2/ }).click();
+  const monitor = page.getByLabel('MLflow 实验监控');
+  await expect(monitor).toContainText('自动采集');
+  await expect(monitor.getByLabel('监控指标')).toBeVisible();
+  await expect(monitor.locator('.recharts-line-curve')).toBeVisible({ timeout: 15000 });
+  await page.screenshot({ path: 'test-results/mlflow-live-curve.png', fullPage: true });
+  await monitor.getByRole('tab', { name: '资源监控' }).click();
+  await monitor.getByLabel('监控指标').selectOption('system/process_memory_mb');
+  await expect(monitor.getByLabel('指标曲线 system/process_memory_mb')).toBeVisible();
+  await expect(monitor).toContainText('GPU 为整卡指标');
+  const endpoint = `/api/projects/${fixture.project}/experiments/${fixture.runs[1]}/tracking`;
+  await expect.poll(async () => (await (await request.get(endpoint)).json()).mlflow_status, { timeout: 30000 }).toBe('FINISHED');
+  const detail = await (await request.get(endpoint + '?metric=train%2Floss')).json();
+  expect(detail.series[0].total).toBe(24);
+  const completed = (await (await request.get(`/api/experiments/${fixture.runs[1]}`)).json()).experiment;
+  expect(Object.keys(completed.metrics)).toEqual(['test_error']);
+  await monitor.getByRole('tab', { name: '训练曲线' }).click();
+  await expect(monitor).toContainText('已完成');
+  await monitor.getByText('追踪关联', { exact: true }).click();
+  await expect(monitor).toContainText(fixture.runs[1]);
+  await page.getByLabel('Ours 版本').selectOption(fixture.v1);
+  await page.getByRole('button', { name: /监控验收 V1/ }).click();
+  await page.getByLabel('MLflow 实验监控').getByText('追踪关联', { exact: true }).click();
+  await expect(page.getByLabel('MLflow 实验监控')).toContainText(fixture.runs[0]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+  expect(errors).toEqual([]); expect(executions).toEqual([]);
+});
+
+test('historical result sync is explicit and never fabricates training curves', async ({ page, request }) => {
+  const response = await request.post('/api/testing/experiment-results-fixture');
+  test.skip(response.status() === 404, 'Use the isolated experiment UI test server.');
+  const fixture = await response.json();
+  await page.addInitScript((id) => { localStorage.setItem('easyref.project', id); localStorage.setItem('easyref.workspace', 'Experiment'); }, fixture.project);
+  await page.goto('/'); await page.getByRole('button', { name: '0.85', exact: true }).click();
+  const monitor = page.getByLabel('MLflow 实验监控');
+  await monitor.getByRole('button', { name: '同步已有结果' }).click();
+  await expect(monitor).toContainText('尚无训练曲线');
+  await expect(monitor.locator('.recharts-line-curve')).toHaveCount(0);
+  await monitor.getByText('追踪关联', { exact: true }).click();
+  await expect(monitor).toContainText('历史参数与结果同步');
+  await page.reload(); await page.getByRole('button', { name: '0.85', exact: true }).click();
+  await expect(page.getByLabel('MLflow 实验监控').getByRole('button', { name: '重新同步记录' })).toBeVisible();
+});

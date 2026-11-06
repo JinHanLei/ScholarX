@@ -472,6 +472,10 @@ def configure_local(app):
     register_library_api(app,store,literature,codex)
     from .local_ideas import register_idea_api
     register_idea_api(app,store,codex,experiments)
+    from .local_experiment_results import register_experiment_results_api
+    register_experiment_results_api(app,store)
+    from .local_tracking import register_tracking_api
+    register_tracking_api(app,experiments.tracking)
     from .research_schema.api import register_schema_api
     register_schema_api(app,store,codex)
     dist=Path(__file__).resolve().parents[2]/'frontend'/'dist'
