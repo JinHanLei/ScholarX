@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 import requests
-from app.literature_translation import DEFAULTS, TranslationSettings, translate_stream
+from app.literature_translation import DEFAULTS, TEST_EXCERPT, TranslationSettings, translate_stream
 
 
 @pytest.fixture(autouse=True)
@@ -157,3 +157,64 @@ def test_translation_route_streams_and_rejects_bad_input(client, monkeypatch):
     result = client.post(f'/api/papers/{ident}/translate', json={'text': 'text'})
     assert result.mimetype == 'text/event-stream'
     assert '译文' in result.get_data(as_text=True) and 'event: done' in result.get_data(as_text=True)
+
+
+def test_connection_test_uses_unsaved_form_values_without_writing(client, services, monkeypatch):
+    post, _ = stub_transport(monkeypatch, [
+        {'type': 'response.output_text.delta', 'delta': '注意力机制帮助模型关注相关信息。'},
+        {'type': 'response.completed'},
+    ])
+    result = client.post('/api/settings/translation/test', json={
+        'api_key': 'sk-unsaved-test-only', 'base_url': 'https://example.org/v1/', 'model': 'custom-model',
+        'text': 'This user-provided text must not be sent during a connection test',
+    })
+    output = result.get_data(as_text=True)
+    assert result.mimetype == 'text/event-stream' and 'event: done' in output
+    assert result.headers['Cache-Control'] == 'no-store'
+    args, kwargs = post.call_args
+    assert args == ('https://example.org/v1/responses',)
+    assert kwargs['headers']['Authorization'] == 'Bearer sk-unsaved-test-only'
+    assert kwargs['json']['model'] == 'custom-model'
+    assert kwargs['json']['input'] == TEST_EXCERPT
+    assert kwargs['json']['max_output_tokens'] == 256
+    assert 'sk-unsaved-test-only' not in output
+    settings = TranslationSettings(services['store'].root)
+    assert not settings.path.exists()
+    assert settings.public() == {**DEFAULTS, 'has_key': False}
+    assert services['store'].one('SELECT COUNT(*) AS n FROM agent_sessions')['n'] == 0
+
+
+def test_connection_test_reuses_saved_key_but_does_not_change_saved_model(client, services, monkeypatch):
+    client.put('/api/settings/translation', json={'api_key': 'sk-saved-test-only'})
+    path = TranslationSettings(services['store'].root).path
+    before = path.read_bytes()
+    post, _ = stub_transport(monkeypatch, [{'type': 'response.output_text.delta', 'delta': '译文'}, {'type': 'response.completed'}])
+    result = client.post('/api/settings/translation/test', json={'api_key': '', 'model': 'draft-model'})
+    assert 'event: done' in result.get_data(as_text=True)
+    assert post.call_args.kwargs['headers']['Authorization'] == 'Bearer sk-saved-test-only'
+    assert post.call_args.kwargs['json']['model'] == 'draft-model'
+    assert path.read_bytes() == before
+
+
+def test_connection_test_requires_key_and_valid_destination(client, no_network):
+    assert client.post('/api/settings/translation/test', json={}).status_code == 400
+    client.put('/api/settings/translation', json={'api_key': 'sk-saved-test-only'})
+    for data in [{'base_url': 'https://different.example/v1'}, {'model': ''}, {'base_url': 'http://example.org'}, []]:
+        result = client.post('/api/settings/translation/test', json=data)
+        assert result.status_code == 400
+    no_network.assert_not_called()
+
+
+@pytest.mark.parametrize('failure', ['authentication', 'timeout', 'incomplete'])
+def test_connection_test_reports_provider_failure_without_leaking_credentials(client, monkeypatch, failure):
+    if failure == 'authentication':
+        stub_transport(monkeypatch, status=401)
+    elif failure == 'timeout':
+        monkeypatch.setattr('app.literature_translation.requests.post', Mock(side_effect=requests.Timeout('sk-preview-test-only')))
+    else:
+        stub_transport(monkeypatch, [{'type': 'response.output_text.delta', 'delta': '部分译文'}])
+    result = client.post('/api/settings/translation/test', json={'api_key': 'sk-preview-test-only'})
+    output = result.get_data(as_text=True)
+    assert 'event: error' in output and 'event: done' not in output
+    assert 'sk-preview-test-only' not in output
+    assert client.get('/api/settings/translation').json['settings']['has_key'] is False
