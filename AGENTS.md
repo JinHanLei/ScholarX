@@ -74,6 +74,14 @@ because a shared file is needed.
   and metric snapshot. See `docs/EXPERIMENT_RESULTS.md`. These actions do not start
   experiments; explicit version submission or run execution controls do.
 
+  Experiment monitoring uses local MLflow, one tracked Run per EasyRef execution.
+  Read `GET /api/projects/<pid>/experiments/<run_id>/tracking` for actual curves
+  and resource samples. Use `easyref_tracking.log_metrics(..., step=...)` in
+  Python training; the executor supplies the helper on PYTHONPATH. Final evaluated
+  metrics still go to EASYREF_METRICS_PATH, separate from intermediate curves.
+  Do not create unrelated tracker runs or attach historical runs to an Idea Vn.
+  See `docs/EXPERIMENT_TRACKING.md` for capture, recovery and integration details.
+
 - Use `scripts/start-component.ps1 -Component <name>` for isolated ports and
   `.easyref` data. Never point concurrent services at the same SQLite/project
   directory. Never copy the user's live database as an automatic setup step.

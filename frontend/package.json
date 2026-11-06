@@ -26,6 +26,7 @@
     "react": "latest",
     "react-dom": "latest",
     "react-markdown": "^10.1.0",
+    "recharts": "3.10.1",
     "remark-gfm": "^4.0.1",
     "vditor": "^3.11.2",
     "vite": "^8.0.16"
