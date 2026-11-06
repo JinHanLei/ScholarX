@@ -15,7 +15,7 @@ from .local_store import atomic_write, digest, encode, file_hash, inside, now, r
 from .local_git import GitService
 
 ACTIVE = {'snapshotting', 'implementing', 'validating', 'running', 'summarizing', 'waiting_approval'}
-TERMINAL = {'completed', 'blocked', 'failed', 'interrupted', 'cancelled'}
+TERMINAL = {'completed', 'blocked', 'failed', 'interrupted', 'cancelled', 'imported'}
 KINDS = {'input', 'backbone', 'module', 'output', 'loss'}
 NODE_FIELDS = ('id', 'label', 'kind', 'description', 'inputs', 'outputs', 'parameters')
 PLAN_SCHEMA = {
@@ -132,11 +132,17 @@ class IdeaService:
                 legacy_data = idea['data']
                 description = '\n\n'.join(f'### {k}\n{v}' for k, v in legacy_data.items() if v and isinstance(v, (str, list)) and k != 'blueprint_id')
                 legacy_blueprint = self.store.one("SELECT c.* FROM component_links l JOIN components c ON c.id=l.target_id WHERE l.source_id=? AND c.kind='blueprint' AND c.status!='absent_in_branch' ORDER BY c.updated_at DESC LIMIT 1", (idea_id,))
+                if not legacy_blueprint:
+                    candidates = self.store.all("SELECT * FROM components WHERE project_id=? AND kind='blueprint' AND status!='absent_in_branch' ORDER BY updated_at DESC", (pid,))
+                    legacy_blueprint = next((bp for bp in candidates if bp['data'].get('idea_id') == idea_id or idea_id in bp['data'].get('source_ids', [])), None)
             else:
                 idea_id, description = uid(), ''
             graph = {'nodes': [], 'edges': []}
             if legacy_blueprint:
                 source = legacy_blueprint['data']
+                description += '\n\n' + str(source.get('markdown', ''))
+                if source.get('boundaries'):
+                    description += '\n\n### 适用边界\n' + '\n'.join('- ' + str(item) for item in source['boundaries'])
                 graph = source.get('graph') or {'nodes': [
                     {'id': m['id'], 'label': m.get('name') or 'Module', 'kind': m.get('kind') if m.get('kind') in KINDS else 'module',
                      'description': m.get('description', ''), 'inputs': str(m.get('inputs', '')), 'outputs': str(m.get('outputs', '')),
@@ -152,7 +158,7 @@ class IdeaService:
             self._export(pid, [idea_id, bp])
             self.activate(pid, idea_id)
             if graph['nodes']:
-                self.save(pid, idea_id, {'document': doc, 'expected_revision': 0, 'purpose': '沿用已有模型设计'})
+                self.save(pid, idea_id, {'document': doc, 'expected_revision': 0, 'purpose': '导入已有模型设计'}, historical=True)
             return self.document(pid, idea_id)
 
     def _export(self, pid, ids):
@@ -174,7 +180,7 @@ class IdeaService:
         self.store.project(pid)
         return self.store.all("SELECT d.* FROM idea_documents d JOIN components c ON c.id=d.idea_id WHERE d.project_id=? AND c.status!='absent_in_branch' ORDER BY d.updated_at DESC", (pid,))
 
-    def save(self, pid, ident, payload):
+    def save(self, pid, ident, payload, *, historical=False):
         doc = clean_document(payload.get('document'))
         with self.lock, self.store.lock:
             old = self.document(pid, ident)
@@ -200,12 +206,14 @@ class IdeaService:
                               'edges': doc['graph']['edges'], 'graph': doc['graph'], 'code_entry': ''}
                     br = self._component(conn, pid, old['blueprint_id'], 'blueprint', doc['name'], bpdata, purpose)
                     version_id = uid()
+                    stage = 'imported' if historical else 'queued'
+                    message = '历史设计已接入画布；既有实验保留原记录，修改设计后自动执行新版本' if historical else '模型设计已保存，自动实验已排队'
                     conn.execute('INSERT INTO idea_versions(id,project_id,idea_id,number,blueprint_revision,idea_revision,document_json,semantic_hash,purpose,stage,message,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                                 (version_id, pid, ident, number, br, ir, encode(doc), fingerprint, purpose, 'queued', '模型设计已保存，自动实验已排队', now(), now()))
-                    conn.execute('INSERT INTO idea_version_events VALUES(?,?,?,?,?,?)', (uid(), pid, version_id, 'queued', purpose, now()))
+                                 (version_id, pid, ident, number, br, ir, encode(doc), fingerprint, purpose, stage, message, now(), now()))
+                    conn.execute('INSERT INTO idea_version_events VALUES(?,?,?,?,?,?)', (uid(), pid, version_id, stage, message, now()))
             if publish: self._export(pid, [ident, old['blueprint_id']])
             self.activate(pid, ident)
-        if publish: self.kick(pid)
+        if publish and not historical: self.kick(pid)
         return {'idea': self.document(pid, ident), 'version': self.version(version_id) if version_id else latest, 'published': publish}
 
     def version(self, ident):

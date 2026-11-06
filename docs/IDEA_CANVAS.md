@@ -79,6 +79,8 @@ python backend/scripts/idea_canvas.py --api-base http://127.0.0.1:5012/api versi
 
 不要通过通用组件写入接口或直接编辑 SQLite/研究导出绕过版本管理。
 已有 Idea 可接入画布，原字段和已有 Blueprint 历史保留；通用旧实验界面仍可访问。
+接入已有架构会创建“历史设计”版本，不重新启动历史实验，也不事后改写旧 Run 的设计关联。
+后续结构修改才创建并自动执行下一版本。旧 Blueprint 的 `source_ids` 关系也可用于恢复架构。
 
 ## 导出与验证
 

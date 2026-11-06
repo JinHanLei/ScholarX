@@ -70,6 +70,32 @@ def test_unified_numbers_are_project_wide(services, project):
     assert publish(service, project)['version']['number'] == 2
 
 
+def test_adopt_archived_blueprint_without_reexecuting_history(services, project, monkeypatch, tmp_path):
+    store, service = services['store'], services['ideas']
+    idea = store.save_component(project['id'], 'idea', 'Archived TEST DATA', {'research_question': 'Existing design'})
+    blueprint = store.save_component(project['id'], 'blueprint', 'Prior architecture', {
+        'source_ids': [idea['id']], 'modules': [{'id': str(uuid4()), 'name': 'Encoder', 'description': 'Existing module'}],
+        'edges': [], 'markdown': 'Existing evidence only.', 'boundaries': ['Not a new successful experiment.']})
+    queued = []; monkeypatch.setattr(service, 'kick', queued.append)
+    adopted = service.create(project['id'], idea_id=idea['id'])
+    version = service.versions(project['id'])[0]
+    assert version['stage'] == 'imported' and not version['runs'] and not queued
+    assert adopted['document']['graph']['nodes'][0]['label'] == 'Encoder'
+    assert 'Not a new successful experiment.' in adopted['document']['description']
+    assert store.component(blueprint['id'])['revision_id'] == blueprint['revision_id']
+    ResearchSchemaService(store).checkpoint(project['id'])
+    recovered = Store(tmp_path / 'archive-roundtrip')
+    ResearchSchemaService(recovered).restore(project['root_path'])
+    assert recovered.one('SELECT stage FROM idea_versions WHERE id=?', (version['id'],))['stage'] == 'imported'
+    doc = copy.deepcopy(adopted['document']); doc['graph']['nodes'][0]['position']['x'] += 50
+    moved = publish(service, project, doc, adopted)
+    assert not moved['published'] and not queued
+    doc['graph']['nodes'][0]['description'] = 'A new architecture change'
+    changed = publish(service, project, doc, moved['idea'])
+    assert changed['version']['number'] == 2 and changed['version']['stage'] == 'queued'
+    assert queued == [project['id']]
+
+
 def test_auto_queue_executes_snapshot_and_retains_real_metrics(services, project, monkeypatch):
     service = services['ideas']; root = Path(project['root_path'])
     (root / 'helper.py').write_text('def calculate(seed): return seed * 7\n')

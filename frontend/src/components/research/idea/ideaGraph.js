@@ -12,7 +12,7 @@ export const KINDS = {
 export const STAGES = {
   queued: '已排队', snapshotting: '固定源码', implementing: '更新实现', validating: '校验实现',
   waiting_approval: '等待原生授权', running: '实验运行中', summarizing: '汇总结果', completed: '已完成',
-  blocked: '等待处理', failed: '失败', cancelled: '已停止', interrupted: '已中断',
+  blocked: '等待处理', failed: '失败', cancelled: '已停止', interrupted: '已中断', imported: '历史设计',
 };
 export const ACTIVE = ['queued', 'snapshotting', 'implementing', 'validating', 'running', 'summarizing', 'waiting_approval'];
 export function layoutGraph(graph) {

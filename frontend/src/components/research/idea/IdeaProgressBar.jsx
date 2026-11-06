@@ -17,7 +17,7 @@ export default function IdeaProgressBar({ project, onExperiment }) {
     {expanded && <div className="idea-progress-detail"><header><strong>V{version.number} · {version.document.name}</strong><button onClick={() => onExperiment(version.id)}>查看对应实验</button></header>
       <ol>{version.events.slice(-12).map((event) => <li key={event.id}><time>{new Date(event.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time><span>{STAGES[event.stage]} · {event.message}</span></li>)}</ol>
       {(actionError || error) && <p role="alert">{actionError || error}</p>}
-      <div className="idea-progress-actions">{ACTIVE.includes(version.stage) ? <button onClick={() => action('cancel')}><Square size={12} />停止当前版本</button> : version.stage !== 'completed' && <button onClick={() => action('retry')}><RotateCcw size={13} />重试此版本</button>}</div>
+      <div className="idea-progress-actions">{ACTIVE.includes(version.stage) ? <button onClick={() => action('cancel')}><Square size={12} />停止当前版本</button> : ['blocked', 'failed', 'interrupted', 'cancelled'].includes(version.stage) && <button onClick={() => action('retry')}><RotateCcw size={13} />重试此版本</button>}</div>
     </div>}
     <button className="idea-progress-summary" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>
       <span className="idea-progress-version">V{version.number}</span>
