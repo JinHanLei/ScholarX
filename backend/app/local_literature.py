@@ -119,6 +119,8 @@ class Literature:
             params.append(args['discipline'])
         if args.get('author'):
             where.append('p.authors_json LIKE ?'); params.append('%' + args['author'] + '%')
+        if args.get('venue_name'):
+            where.append('p.venue_name LIKE ?'); params.append('%' + args['venue_name'] + '%')
         if args.get('project_id'):
             join += ' JOIN paper_library_entries l ON l.paper_id=p.id'
             fields += ',l.pinned,l.archived,l.created_at AS collected_at'
@@ -130,6 +132,17 @@ class Literature:
         if args.get('project_id'):
             if args.get('sort')=='added': order='l.created_at DESC,p.title'
             order='l.pinned DESC,'+order
+        if args.get('sort_by'):
+            columns = {'title': 'p.title COLLATE NOCASE', 'year': 'p.year', 'rank': 'v.rank', 'pdf': "(CASE WHEN COALESCE(p.pdf_path,'')='' THEN 0 ELSE 1 END)"}
+            orders, seen = [], set()
+            for rule in args['sort_by'].split(','):
+                parts = rule.split(':')
+                if len(parts) != 2 or parts[0] not in columns or parts[1] not in {'asc', 'desc'} or parts[0] in seen:
+                    raise ValueError('无效的文献排序条件')
+                field, direction = parts; seen.add(field)
+                if field in {'year', 'rank'}: orders.append(columns[field]+' IS NULL ASC')
+                orders.append(columns[field]+' '+direction.upper())
+            order = ('l.pinned DESC,' if args.get('project_id') else '') + ','.join(orders) + ',p.id'
         clause = ' FROM papers p ' + join + ' WHERE ' + ' AND '.join(where)
         total = self.store.one('SELECT COUNT(*) AS n' + clause, params)['n']
         rows = self.store.all('SELECT '+fields + clause + ' ORDER BY ' + order + ' LIMIT ? OFFSET ?', [*params, limit, offset])

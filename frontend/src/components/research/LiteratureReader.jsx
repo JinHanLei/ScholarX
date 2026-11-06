@@ -1,37 +1,166 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Upload, Link, Languages, Download, Square, FileText } from 'lucide-react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { ArrowLeft, Upload, Languages, Download, LoaderCircle, NotebookPen, X } from 'lucide-react';
 import { PdfJsViewer } from '../PdfViewer.jsx';
-import ResearchModal from './ResearchModal.jsx';
-import useLiteratureAssist from './useLiteratureAssist.js';
-import { request, Badge, Field } from './shared.jsx';
+import LiteraturePdfDialog from './LiteraturePdfDialog.jsx';
+import useLiteratureTranslation from './useLiteratureTranslation.js';
+import { request, Field } from './shared.jsx';
 import { downloadApiFile } from '../../utils/api.js';
 
-export default function LiteratureReader({ paper, project, onClose, onChanged, openSession }) {
+function SelectionPopup({ anchor, stage, text, busy }) {
+  const ref = useRef(null);
+  const [position, setPosition] = useState(null);
+  useLayoutEffect(() => {
+    const popup = ref.current;
+    if (!popup || !stage.current) return undefined;
+    const place = () => {
+      const { width, height } = popup.getBoundingClientRect();
+      const area = stage.current.getBoundingClientRect();
+      const left = Math.max(8, Math.min(anchor.left, area.width - width - 8));
+      const preferredTop = anchor.bottom + 8 + height <= area.height - 8 ? anchor.bottom + 8 : anchor.top - height - 8;
+      const top = Math.max(8, Math.min(preferredTop, area.height - height - 8));
+      setPosition({ left, top });
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(popup);
+    observer.observe(stage.current);
+    return () => observer.disconnect();
+  }, [anchor, stage]);
+  return <section ref={ref} className="lit-selection-popup" role="status" aria-label={busy && !text ? '正在翻译' : '译文'} aria-busy={busy} style={{ ...position, visibility: position ? 'visible' : 'hidden' }}>
+    {text ? <p className="lit-translation-output">{text}</p> : <span className="lit-translation-loading" aria-hidden="true"><i /><i /><i /></span>}
+  </section>;
+}
+
+export default function LiteratureReader({ paper, project, onClose, onChanged, openSession, onOpenApiSettings }) {
   const [hasPdf, setHasPdf] = useState(Boolean(paper.pdf_path));
   const [version, setVersion] = useState(0);
-  const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [quote, setQuote] = useState('');
   const [page, setPage] = useState(1);
+  const [anchor, setAnchor] = useState(null);
+  const [translationEnabled, setTranslationEnabled] = useState(false);
   const [attachments, setAttachments] = useState(!paper.pdf_path);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [note, setNote] = useState('');
   const [annotations, setAnnotations] = useState([]);
+  const [toolbarContainer, setToolbarContainer] = useState(null);
   const reader = useRef(null);
-  const assist = useLiteratureAssist(project, 'translate');
-  useEffect(() => { request(`/papers/${paper.id}/annotations`).then((r) => setAnnotations(r.annotations.filter((a) => a.project_id === project?.id))).catch((e) => setError(e.message)); }, [paper.id]);
-  const action = async (fn) => { setBusy(true); setError(''); try { await fn(); } catch (e) { setError(e.message); } finally { setBusy(false); } };
-  const attached = () => { setHasPdf(true); setVersion((v) => v + 1); setAttachments(false); onChanged(); };
-  const capture = () => {
+  const stage = useRef(null);
+  const backButton = useRef(null);
+  const selecting = useRef(false);
+  const lastSelection = useRef(null);
+  const assist = useLiteratureTranslation(paper.id);
+
+  useEffect(() => { backButton.current?.focus(); }, []);
+
+  useEffect(() => {
+    let live = true;
+    request(`/papers/${paper.id}/annotations`).then((r) => {
+      if (live) setAnnotations(r.annotations.filter((a) => a.project_id === project?.id));
+    }).catch((e) => { if (live) setError(e.message); });
+    return () => { live = false; };
+  }, [paper.id, project?.id]);
+
+  const capture = useCallback(() => {
     const selection = window.getSelection();
-    if (!selection || selection.isCollapsed || !reader.current?.contains(selection.anchorNode) || !reader.current?.contains(selection.focusNode)) return;
+    if (selecting.current || !selection?.rangeCount || selection.isCollapsed || !stage.current) return;
+    const inPdfText = (node) => reader.current?.contains(node) && (node?.nodeType === 1 ? node : node?.parentElement)?.closest('.pdf-js-text-layer');
+    if (!inPdfText(selection.anchorNode) || !inPdfText(selection.focusNode)) return;
     const text = selection.toString().trim();
-    if (text) { setQuote(text.slice(0, 16000)); setPage(Number(selection.anchorNode?.parentElement?.closest('[data-pdf-page]')?.dataset.pdfPage || 1)); }
+    if (!text) return;
+    const range = selection.getRangeAt(0);
+    const previous = lastSelection.current;
+    if (previous && previous.startContainer === range.startContainer && previous.startOffset === range.startOffset &&
+        previous.endContainer === range.endContainer && previous.endOffset === range.endOffset) return;
+    const bounds = stage.current.getBoundingClientRect();
+    const rects = [...range.getClientRects()].filter((r) => r.width > 0 && r.bottom > bounds.top && r.top < bounds.bottom && r.right > bounds.left && r.left < bounds.right);
+    const rect = rects.at(-1);
+    if (!rect) return;
+    lastSelection.current = range.cloneRange();
+    setQuote(text.slice(0, 16000));
+    setPage(Number(selection.anchorNode?.parentElement?.closest('[data-pdf-page]')?.dataset.pdfPage || 1));
+    setNotesOpen(false);
+    if (translationEnabled) {
+      setAnchor({ left: rect.left - bounds.left, top: rect.top - bounds.top, bottom: rect.bottom - bounds.top });
+      assist.start(text.slice(0, 16000));
+    }
+  }, [translationEnabled, assist.start]);
+
+  // Selection handles on touch devices can move after pointerup.
+  useEffect(() => {
+    let timer;
+    const changed = () => { clearTimeout(timer); timer = setTimeout(capture, 160); };
+    const released = () => { if (selecting.current) { selecting.current = false; capture(); } };
+    document.addEventListener('selectionchange', changed);
+    window.addEventListener('pointerup', released);
+    window.addEventListener('pointercancel', released);
+    return () => { clearTimeout(timer); document.removeEventListener('selectionchange', changed); window.removeEventListener('pointerup', released); window.removeEventListener('pointercancel', released); };
+  }, [capture]);
+
+  const dismissTranslation = useCallback(() => {
+    setAnchor(null); lastSelection.current = null; assist.reset();
+    const selection = window.getSelection();
+    if (selection && reader.current?.contains(selection.anchorNode)) selection.removeAllRanges();
+  }, [assist.reset]);
+
+  useEffect(() => {
+    if ((!anchor && !notesOpen) || attachments) return undefined;
+    const escape = (event) => {
+      if (event.key !== 'Escape' || document.querySelector('dialog[open]')) return;
+      event.preventDefault(); event.stopPropagation(); dismissTranslation(); setNotesOpen(false);
+    };
+    document.addEventListener('keydown', escape, true);
+    return () => document.removeEventListener('keydown', escape, true);
+  }, [anchor, notesOpen, attachments, dismissTranslation]);
+
+  const action = async (fn) => { setBusy(true); setError(''); try { await fn(); } catch (e) { setError(e.message); } finally { setBusy(false); } };
+  const attached = () => { setHasPdf(true); setVersion((v) => v + 1); setAttachments(false); dismissTranslation(); onChanged(); };
+  const currentTranslation = assist.submittedText === quote;
+  const readerError = error || (translationEnabled ? assist.error : '');
+  const showNotes = () => { dismissTranslation(); setNotesOpen((value) => !value); };
+  const toggleTranslation = () => {
+    dismissTranslation(); setError('');
+    if (!translationEnabled && !assist.settings?.has_key) {
+      if (assist.settingsError) setError(assist.settingsError);
+      onOpenApiSettings();
+      return;
+    }
+    setTranslationEnabled((enabled) => !enabled);
   };
-  return <ResearchModal title={paper.title} subtitle={`${paper.year || '年份未知'} · ${paper.venue_name || '未注明期刊 / 会议'}`} wide className="lit-reader-modal" onClose={onClose}>
-    <div className="lit-reader-toolbar"><div>{paper.rank && <Badge>CCF {paper.rank}</Badge>}<small>{paper.authors.join(', ')}</small></div><div className="rw-toolbar"><button onClick={() => setAttachments(!attachments)}><Upload size={14} />{hasPdf ? '管理 PDF' : '添加 PDF'}</button><button onClick={() => action(() => downloadApiFile(`/papers/${paper.id}/bibtex`, {}, 'reference.bib'))}><Download size={14} />BibTeX</button></div></div>
-    {attachments && <section className="lit-attachments"><div><strong>保存到本地 PDF 文献库</strong><p>上传或粘贴 PDF 直链，文件统一保存并自动去重。</p></div><div className="rw-toolbar"><label className={`rw-file-button ${busy ? 'disabled' : ''}`}><Upload size={15} />上传 PDF<input type="file" accept=".pdf,application/pdf" disabled={busy} aria-label="上传 PDF" onChange={(e) => { const file = e.target.files[0]; e.target.value = ''; if (file) action(async () => { const body = new FormData(); body.append('file', file); await request(`/papers/${paper.id}/pdf`, { method: 'POST', body }); attached(); }); }} /></label><input type="url" aria-label="PDF 链接" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…/paper.pdf" /><button disabled={!url.trim() || busy} onClick={() => action(async () => { await request(`/papers/${paper.id}/pdf-link`, { method: 'POST', body: { url } }); attached(); })}><Link size={14} />{busy ? '正在保存…' : '保存链接 PDF'}</button></div></section>}
-    {error && <p className="rw-dialog-error" role="alert">{error}</p>}
-    {hasPdf ? <div className="lit-reading-layout"><div className="lit-pdf-pane" ref={reader} onPointerUp={capture} onKeyUp={capture}><PdfJsViewer key={version} url={`/api/papers/${paper.id}/pdf?v=${version}`} title={paper.title} /></div><aside className="lit-translation"><h3><Languages size={17} />划词翻译</h3><p>选中 PDF 中的文字，用 Codex 翻译。</p><Field label="选中文本"><textarea rows={5} value={quote} onChange={(e) => setQuote(e.target.value)} placeholder="选中内容会显示在这里，也可以粘贴原文。" /></Field><div className="rw-toolbar"><button className="rw-primary" disabled={!project || !quote.trim() || assist.busy} onClick={() => assist.start(quote, { paper_id: paper.id })}><Languages size={14} />{assist.busy ? '正在翻译…' : 'Codex 翻译'}</button>{assist.busy && <button disabled={!assist.task?.session_id} onClick={assist.stop}><Square size={13} />停止</button>}</div>{assist.task?.notice && <p className="rw-warning" role="status">{assist.task.notice}</p>}{assist.error && <p className="rw-error" role="alert">{assist.error}</p>}{assist.task?.status === 'waiting_approval' && <button onClick={() => openSession(assist.task.session_id)}>查看 Codex 授权请求</button>}{assist.task?.output?.translation && <div className="lit-translation-output"><small>{assist.submittedText === quote ? '中文译文' : '上一条选文的译文'}</small><p>{assist.task.output.translation}</p></div>}<details className="lit-notes"><summary>摘录与笔记 · {annotations.length}</summary><Field label="笔记"><textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} /></Field><button disabled={!project || !note.trim() || busy} onClick={() => action(async () => { const r = await request(`/papers/${paper.id}/annotations`, { method: 'POST', body: { project_id: project.id, page, quote, note } }); setAnnotations(r.annotations.filter((a) => a.project_id === project.id)); setNote(''); })}>保存摘录</button>{annotations.map((a) => <blockquote key={a.id}><small>第 {a.page} 页</small><p>{a.quote}</p><p>{a.note}</p></blockquote>)}</details></aside></div> : <div className="lit-pdf-empty"><FileText size={42} /><h3>为这篇论文添加 PDF</h3><p>保存到本地后，即可阅读、划词翻译和整理摘录。</p>{paper.doi && <a href={`https://doi.org/${paper.doi}`} target="_blank" rel="noreferrer">打开论文来源 ↗</a>}</div>}
-  </ResearchModal>;
+  const headerActions = <div className="lit-reader-actions">
+    <div className="lit-reader-zoom" ref={setToolbarContainer} />
+    <button type="button" className="lit-translation-toggle" aria-label="划词翻译" aria-pressed={translationEnabled} title={translationEnabled ? (assist.busy ? '正在翻译，点击关闭划词翻译' : '关闭划词翻译') : '开启划词翻译'} onClick={toggleTranslation}>
+      {translationEnabled && assist.busy ? <LoaderCircle size={15} className="lit-translation-spinner" /> : <Languages size={15} />}<span>划词翻译</span>
+    </button>
+    <button type="button" className="rw-icon" title="摘录与笔记" aria-label="摘录与笔记" aria-expanded={notesOpen} onClick={showNotes}><NotebookPen size={16} /></button>
+    <button type="button" className="rw-icon" title={hasPdf ? '管理 PDF' : '添加 PDF'} aria-label={hasPdf ? '管理 PDF' : '添加 PDF'} onClick={() => { dismissTranslation(); setAttachments(true); }}><Upload size={16} /></button>
+    <button type="button" className="rw-icon" title="导出 BibTeX" aria-label="导出 BibTeX" disabled={busy} onClick={() => action(() => downloadApiFile(`/papers/${paper.id}/bibtex`, {}, 'reference.bib'))}><Download size={16} /></button>
+  </div>;
+
+  return <section className="lit-reader" aria-label="PDF 阅读器">
+    <header className="lit-reader-header">
+      <button ref={backButton} type="button" className="rw-icon" aria-label="返回文献列表" title="返回文献列表" onClick={onClose}><ArrowLeft size={18} /></button>
+      <h2 title={paper.title}>{paper.title}</h2>
+      {headerActions}
+    </header>
+    {attachments && <LiteraturePdfDialog paper={paper} project={project} onClose={() => setAttachments(false)} onSaved={attached} openSession={openSession} />}
+    <div className="lit-reading-layout" ref={stage}>
+      {readerError && <div className="lit-reader-error" role="alert">{readerError}<button type="button" className="rw-icon" aria-label="关闭错误提示" onClick={() => { setError(''); assist.reset(); }}><X size={14} /></button></div>}
+      {hasPdf ? <div className="lit-pdf-pane" ref={reader} onPointerDown={() => { selecting.current = true; lastSelection.current = null; assist.reset(); setAnchor(null); setNotesOpen(false); }} onPointerUp={() => { selecting.current = false; capture(); }} onPointerCancel={() => { selecting.current = false; }} onKeyUp={capture}>
+        <PdfJsViewer key={version} url={`/api/papers/${paper.id}/pdf?v=${version}`} title={paper.title} toolbarContainer={toolbarContainer} />
+      </div> : <div className="lit-pdf-empty"><p>添加 PDF 后开始阅读。</p><button onClick={() => setAttachments(true)}><Upload size={15} />添加 PDF</button></div>}
+      {translationEnabled && anchor && currentTranslation && (assist.busy || assist.translation) && <SelectionPopup anchor={anchor} stage={stage} text={assist.translation} busy={assist.busy} />}
+      {notesOpen && <section className="lit-reader-notes" role="dialog" aria-label="摘录与笔记">
+        <header><strong>摘录与笔记 · {annotations.length}</strong><button type="button" className="rw-icon" aria-label="关闭笔记" onClick={() => setNotesOpen(false)}><X size={15} /></button></header>
+        {quote && <blockquote className="lit-selection-quote"><small>第 {page} 页</small><p>{quote}</p></blockquote>}
+        <Field label="笔记"><textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="记录你的想法…" /></Field>
+        <button disabled={!project || !note.trim() || busy} onClick={() => action(async () => {
+          const r = await request(`/papers/${paper.id}/annotations`, { method: 'POST', body: { project_id: project.id, page, quote, note } });
+          setAnnotations(r.annotations.filter((a) => a.project_id === project.id)); setNote('');
+        })}>保存摘录</button>
+        <div className="lit-reader-note-list">{annotations.map((a) => <blockquote key={a.id}><small>第 {a.page} 页</small><p>{a.quote}</p><p>{a.note}</p></blockquote>)}</div>
+      </section>}
+    </div>
+  </section>;
 }
