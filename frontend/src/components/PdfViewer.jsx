@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist/build/pdf.mjs';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import ReactMarkdown from 'react-markdown';
@@ -67,7 +68,7 @@ function pdfFetchUrl(url) {
   return `${API}/pdf/proxy?url=${encodeURIComponent(url)}`;
 }
 
-function PdfJsViewer({ text = DEFAULT_PDF_COPY, url, title, target }) {
+function PdfJsViewer({ text = DEFAULT_PDF_COPY, url, title, target, toolbarContainer = null }) {
   const wrapRef = useRef(null);
   const targetTimerRef = useRef(null);
   const [pdf, setPdf] = useState(null);
@@ -215,18 +216,19 @@ function PdfJsViewer({ text = DEFAULT_PDF_COPY, url, title, target }) {
   const minPageWidth = pageBaseWidth ? pageBaseWidth * 0.35 : PDF_MIN_VIEWPORT_WIDTH;
   const maxPageWidth = pageBaseWidth ? pageBaseWidth * 4 : PDF_MIN_VIEWPORT_WIDTH * 4;
   const targetPageWidth = Math.round(Math.max(minPageWidth, Math.min(maxPageWidth, (availableWidth || pageBaseWidth || PDF_MIN_VIEWPORT_WIDTH) * zoom)));
+  const toolbar = <div className="pdf-js-toolbar">
+    <span>{pdf.numPages} {toolbarContainer ? '页' : 'pages'}</span>
+    <button type="button" className="icon-button" aria-label="缩小 PDF" title="缩小" disabled={zoom <= 0.5} onClick={() => changeZoom(-0.1)}>-</button>
+    <strong>{Math.round(zoom * 100)}%</strong>
+    <button type="button" className="icon-button" aria-label="放大 PDF" title="放大" disabled={zoom >= 2.6} onClick={() => changeZoom(0.1)}>+</button>
+  </div>;
   return (
     <div
       ref={wrapRef}
       className="pdf-js-wrap"
       aria-label={title}
     >
-      <div className="pdf-js-toolbar">
-        <span>{pdf.numPages} pages</span>
-        <button className="icon-button" onClick={() => changeZoom(-0.1)}>-</button>
-        <strong>{Math.round(zoom * 100)}%</strong>
-        <button className="icon-button" onClick={() => changeZoom(0.1)}>+</button>
-      </div>
+      {toolbarContainer ? createPortal(toolbar, toolbarContainer) : toolbar}
       <div className="pdf-js-pages">
         {pages.map((pageNumber) => (
           <PdfJsPage key={`${pageNumber}-${targetPageWidth}`} pdf={pdf} pageNumber={pageNumber} targetWidth={targetPageWidth} />
