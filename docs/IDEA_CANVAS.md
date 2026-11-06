@@ -136,20 +136,36 @@ CLI 默认等待 120 秒，包含项目归档时间，可用全局参数 `--time
 
 ## 导出与验证
 
-PPT 通过 PptxGenJS 延迟加载生成。模块、文本和箭头为原生可编辑对象，设计说明
-放在后续幻灯片与备注中。导出是单向的，不支持外部 PPT 修改自动回传，也不承诺
-任意 HTML/LaTeX 内容与 PowerPoint 的完全一致渲染。
+原生论文图通过 PptxGenJS 导出，模块、文本和箭头为可编辑对象，设计说明放在后续
+幻灯片与备注中。工具栏支持“导入 PPT”：选择不超过 25 MB 的 `.pptx`，默认取展示
+顺序中的第一张（不假定文件名是 slide1.xml），保存为草稿并追加一条导入记录，不启动实验。
+旧 `.ppt` 需先在 PowerPoint 中另存为 `.pptx`。
+
+导入后保留完整原文件；“导出 PPT”下载该文件，可在 PowerPoint 编辑后再次导入。
+旧记录和版本继续引用各自的不可变文件，不会被新导入覆盖。导入图不能导出 SVG；
+导入不会自动把 PPT 内容解析成原有模块图，执行器须读取第一张及其提取文字，协调
+原模块定义；若模型含义不明确则阻塞，不能直接沿用旧图执行。
+
+文件位于项目 `research-assets/idea-ppt/<idea_id>/<sha256>.pptx`，随标准项目导出。
+接口 `POST /api/projects/<pid>/ideas/<id>/pptx` 接收 multipart 的 `file`、完整 `document`
+JSON、`expected_revision` 和 `record_id` UUID；`GET .../pptx/<sha256>` 获取原文件。
+读取验证内容哈希，外部改写原文件会明确报错。
+
+预览按需加载 [pptx-renderer 1.4.0](https://github.com/aiden0z/pptx-renderer)，禁用外部
+媒体加载和可选 PDF/EMF 预览回退。为避免升级全局 PDF 阅读器，package.json 仅对它的
+未使用的可选 pdfjs peer 使用现有版本 override。普通文字、形状、图片、表格等可预览，
+特殊字体、动画及复杂 Office 效果不保证与 PowerPoint 完全一致；原文件始终保留。
 
 项目标准导出包含统一版本、事件和运行关联；完整实现归档随实验产物保存。
 修改后的代码如与原实现清单不符，会阻止继续把它当成原版本执行。
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest backend/tests/test_idea_canvas.py backend/tests/test_idea_research.py -q
+.\.venv\Scripts\python.exe -m pytest backend/tests/test_idea_canvas.py backend/tests/test_idea_research.py backend/tests/test_idea_pptx.py -q
 node --test frontend/unit/idea-graph.test.mjs
 npm --prefix frontend run build
 # 使用隔离数据、IDEA_AUTOSTART=False 的验收服务，避免 UI 测试调用真实 Codex。
 # EASYREF_TEST_URL 指向该实例；EASYREF_BROWSER_EXECUTABLE 可指定本机 Chrome。
-npm --prefix frontend run test:e2e -- tests/idea.spec.js
+npm --prefix frontend run test:e2e -- tests/idea.spec.js tests/idea-pptx.spec.js
 ```
 
 共享接线文件：`local_api.py`、`local_codex.py`、`local_store.py`、

@@ -51,6 +51,6 @@ export default function ResearchJournal({ projectId, ideaId, versions, onVersion
       </details>;
     })}
     {versions.length > 3 && <button className="idea-history-more" onClick={() => setAll(!all)}>{all ? '收起早期版本' : `查看全部 ${versions.length} 个版本`}</button>}
-    {snapshot && <ResearchModal title={snapshot.data.title} subtitle="当时的设计快照" onClose={() => setSnapshot(null)} wide className="idea-record-dialog"><PaperFigure figure={snapshot.document.figure} stale={snapshot.figure_stale} historical /><pre className="idea-snapshot-description">{snapshot.document.description}</pre>{!snapshot.document.figure && <ul>{snapshot.document.graph.nodes.map((node) => <li key={node.id}>{node.label}：{node.description}</li>)}</ul>}</ResearchModal>}
+    {snapshot && <ResearchModal title={snapshot.data.title} subtitle="当时的设计快照" onClose={() => setSnapshot(null)} wide className="idea-record-dialog"><PaperFigure projectId={projectId} ideaId={ideaId} figure={snapshot.document.figure} stale={snapshot.figure_stale} historical /><pre className="idea-snapshot-description">{snapshot.document.description}</pre>{!snapshot.document.figure && <ul>{snapshot.document.graph.nodes.map((node) => <li key={node.id}>{node.label}：{node.description}</li>)}</ul>}</ResearchModal>}
   </section>;
 }

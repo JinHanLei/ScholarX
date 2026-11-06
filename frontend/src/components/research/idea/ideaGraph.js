@@ -88,6 +88,7 @@ export function newNode(kind, index = 0) {
 }
 export function semanticGraph(document) {
   return JSON.stringify({ description: document.description,
+    ...(document.figure?.presentation ? { presentation: document.figure.presentation.sha256 } : {}),
     nodes: document.graph.nodes.map((node) => Object.fromEntries(['id', 'label', 'kind', 'description', 'inputs', 'outputs', 'parameters'].map((key) => [key, node[key] || '']))).sort((a, b) => a.id.localeCompare(b.id)),
     edges: document.graph.edges.map(({ id, source, target, label }) => ({ id, source, target, label: label || '' })).sort((a, b) => a.id.localeCompare(b.id)) });
 }

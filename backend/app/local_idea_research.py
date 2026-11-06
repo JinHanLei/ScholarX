@@ -2,6 +2,7 @@
 import math
 import re
 from uuid import UUID
+from .local_idea_pptx import clean_presentation
 
 
 def clean_figure(value):
@@ -32,6 +33,10 @@ def clean_figure(value):
     source_hash = string(value, 'source_hash', limit=64)
     if source_hash and not re.fullmatch(r'[0-9a-f]{64}', source_hash):
         raise ValueError('论文图来源标记无效')
+    if value.get('presentation') is not None:
+        return {'width': width, 'height': height, 'title': string(value, 'title', limit=300),
+                'caption': string(value, 'caption'), 'source_hash': source_hash,
+                'presentation': clean_presentation(value['presentation'])}
     elements = value.get('elements')
     if not isinstance(elements, list) or not 1 <= len(elements) <= 1000:
         raise ValueError('论文图需要 1 至 1000 个矢量元素')

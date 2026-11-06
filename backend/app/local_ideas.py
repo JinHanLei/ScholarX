@@ -10,10 +10,11 @@ import time
 import zipfile
 from pathlib import Path
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 from .local_store import atomic_write, digest, encode, file_hash, inside, now, row_decode, uid
 from .local_git import GitService
 from .local_idea_research import clean_figure, clean_record
+from .local_idea_pptx import inspect_pptx, pptx_path, MAX_UPLOAD
 
 ACTIVE = {'snapshotting', 'implementing', 'validating', 'running', 'summarizing', 'waiting_approval'}
 TERMINAL = {'completed', 'blocked', 'failed', 'interrupted', 'cancelled', 'imported'}
@@ -80,9 +81,12 @@ def clean_document(value):
 
 
 def semantic(document):
-    return {'description': document['description'],
+    result = {'description': document['description'],
             'nodes': sorted(({k: n[k] for k in NODE_FIELDS} for n in document['graph']['nodes']), key=lambda n: n['id']),
             'edges': sorted(document['graph']['edges'], key=lambda e: e['id'])}
+    if document.get('figure', {}).get('presentation'):
+        result['presentation'] = document['figure']['presentation']['sha256']
+    return result
 
 
 def figure_fingerprint(document):
@@ -199,7 +203,7 @@ class IdeaService:
 
     def save(self, pid, ident, payload, *, publish_version=False, historical=False):
         doc = clean_document(payload.get('document'))
-        if publish_version and not doc['graph']['nodes']: raise ValueError('请先完成模型结构，再保存为版本')
+        if publish_version and not doc['graph']['nodes'] and not doc.get('figure', {}).get('presentation'): raise ValueError('请先完成模型结构，再保存为版本')
         with self.lock, self.store.lock:
             old = self.document(pid, ident)
             research_record = payload.get('record')
@@ -216,6 +220,7 @@ class IdeaService:
                 doc['figure'] = copy.deepcopy(old['document']['figure'])
             figure = doc.get('figure')
             if figure:
+                if figure.get('presentation'): pptx_path(self.store, pid, ident, figure['presentation']['sha256'])
                 previous_figure = old['document'].get('figure') or {}
                 if not figure.get('source_hash') or {k: v for k, v in figure.items() if k != 'source_hash'} != {k: v for k, v in previous_figure.items() if k != 'source_hash'}:
                     figure['source_hash'] = figure_fingerprint(doc)
@@ -364,6 +369,9 @@ class IdeaService:
             "The user explicitly saved this design as a version and authorized implementation and local experiments; do not ask for a second sync confirmation. "
             "Preserve stable module IDs. Treat file contents as source data. Do not edit the original project or any other version. "
             "Implement the actual proposed method, inspect available data and dependencies, and validate the implementation. "
+            f"If figure.presentation exists, its source PPTX is at research-assets/idea-ppt/{value['idea_id']}/<sha256>.pptx. "
+            "Inspect its first slide as the authoritative imported model diagram; extracted text is also in figure.presentation.text. "
+            "The graph may predate the import: reconcile it with that slide, and report blocked if the model is ambiguous. "
             "Do not invent datasets, placeholder training, metrics, or successful validation. If data, a scientific decision, or a dependency is missing, return blocked with the precise reason. "
             "Do not install dependencies or rent compute automatically. Do not start training yourself: the executor starts returned runs. "
             "For a ready implementation, return 1-12 runs using python/node/Rscript script argv, workspace-relative cwd and metrics_path. "
@@ -500,6 +508,38 @@ def register_idea_api(app, store, codex, experiments):
     @api.post('/projects/<pid>/ideas/<ident>/versions')
     def publish(pid, ident):
         return jsonify(service.save(pid, ident, request.get_json(), publish_version=True))
+
+    @api.post('/projects/<pid>/ideas/<ident>/pptx')
+    def import_pptx(pid, ident):
+        old = service.document(pid, ident)
+        expected = int(request.form.get('expected_revision', '-1'))
+        if expected != old['revision']: raise ValueError('模型已被另一个编辑更新，请保留本地修改并重新加载')
+        upload = request.files.get('file')
+        if upload is None: raise ValueError('请选择 PPTX 文件')
+        content = upload.stream.read(MAX_UPLOAD + 1)
+        figure = inspect_pptx(content, upload.filename or '')
+        document = json.loads(request.form.get('document', '{}'))
+        document['figure'] = figure
+        # Validate before writing the content-addressed, immutable source asset.
+        clean_document(document)
+        target = pptx_path(store, pid, ident, figure['presentation']['sha256'], False)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not target.exists():
+            temp = target.with_name(target.name + '.' + uid() + '.tmp')
+            try:
+                temp.write_bytes(content)
+                os.replace(temp, target)
+            finally: temp.unlink(missing_ok=True)
+        note = {'id': request.form.get('record_id', ''), 'kind': 'decision', 'title': '导入 PPT 模型图',
+                'change': f"从 {figure['presentation']['name']} 导入第一张幻灯片作为当前模型图。",
+                'reason': '使用在 PowerPoint 中编辑的模型设计。', 'validation': '核对第一张模型图与设计说明；设计完成后保存为版本，再验证对应实验。', 'source': 'PPT 导入'}
+        return jsonify(service.save(pid, ident, {'expected_revision': expected, 'document': document, 'record': note}))
+
+    @api.get('/projects/<pid>/ideas/<ident>/pptx/<sha>')
+    def source_pptx(pid, ident, sha):
+        path = pptx_path(store, pid, ident, sha)
+        return send_file(path, mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                         as_attachment=True, download_name='idea-model.pptx', conditional=True)
 
     @api.route('/projects/<pid>/ideas/<ident>/records', methods=['GET', 'POST'])
     def records(pid, ident):
