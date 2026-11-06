@@ -42,3 +42,7 @@
 模块文件为 `LiteratureReader.jsx`、`LiteratureWorkspace.jsx`、`literature.css`。没有后端、迁移或依赖变更。尚未合入 `main`。
 
 验证：前端构建通过（已有大体积 bundle 提示）；现有前端单元用例 2 项、`test_literature_list.py` 后端用例 4 项通过。在 5011 的独立验收项目中确认：阅读区不在 dialog 中，只有一个 48px 工具栏；鼠标选文弹窗位于 PDF 区域内；真实 Codex 翻译重连后返回中文译文；笔记与第 1 页摘录成功保存；缩放 100% → 110% → 100%；Esc 只关闭浮窗；返回后年份升序与列表保留，重新进入正常。浏览器无 error/warn 日志。本轮未验证触屏选文，未运行包含其他工作区和旧界面选择器的全量浏览器套件。预览截图：`logs/pdf-inline-reader-final.png`。
+
+## 阅读时隐藏底部导航
+
+本记录所在提交接续 `7268992`，只修改 Literature 专用样式：PDF 阅读期间隐藏底部阶段导航并释放该行空间，返回列表自动恢复。无共享文件、后端、迁移或依赖变更。前端构建通过；浏览器确认阅读区延伸到视口底部，返回列表恢复导航，再次阅读重新隐藏。此轮仅调整样式，未重复运行后端测试。截图：`logs/pdf-reader-no-footer.png`。分支仍为 `codex/literature`，尚未合入 `main`。

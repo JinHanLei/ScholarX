@@ -1,6 +1,8 @@
 /* Literature: the collection is the workspace, tools stay around its edges. */
 .research-shell .lit-content{padding:0;display:flex;overflow:hidden}
 .lit-workspace{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;background:#fff}
+.research-shell:has(.lit-workspace>.lit-reader){grid-template-rows:auto minmax(0,1fr)}
+.research-shell:has(.lit-workspace>.lit-reader)>.rw-progress{display:none}
 .lit-topbar{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:15px 24px 13px;flex-shrink:0}
 .research-shell .lit-refresh{width:34px;height:34px;padding:0;border:0;background:transparent;color:#9a90ab}
 .research-shell .lit-refresh:hover{color:#7155c6;background:#f5f0fc}
