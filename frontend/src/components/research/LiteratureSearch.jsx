@@ -1,64 +1,64 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Search, Plus, Check, Sparkles, Square, Globe } from 'lucide-react';
+import { Search, Globe, MessageSquare } from 'lucide-react';
 import ResearchModal from './ResearchModal.jsx';
 import useLiteratureAssist from './useLiteratureAssist.js';
-import { request, Field, Badge, Empty } from './shared.jsx';
-import { articleUrl, samePaper } from './literatureHelpers.js';
-import ReactMarkdown from 'react-markdown';
+import LiteratureSearchResults from './LiteratureSearchResults.jsx';
+import { request, Field } from './shared.jsx';
 
-const defaults = { source: 'all', rank: '', year_from: '', year_to: '', author: '', type: '', venue_id: '', sort: 'year' };
-export default function LiteratureSearch({ mode, initialQuery = '', project, onClose, onAdded, openSession }) {
+const defaults = { rank: '', year_from: '', year_to: '', author: '', type: '', venue_id: '', sort: 'year' };
+export default function LiteratureSearch({ mode, initialQuery = '', initialNetwork = false, onNetworkChange, project, onClose, onAdded, openSession, openChat }) {
   const [query, setQuery] = useState(initialQuery);
-  const [natural, setNatural] = useState(initialQuery);
+  const [network, setNetwork] = useState(initialNetwork);
   const [filters, setFilters] = useState(defaults);
   const [venues, setVenues] = useState([]);
   const [result, setResult] = useState(null);
-  const [offset, setOffset] = useState(0);
   const [searched, setSearched] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [adding, setAdding] = useState('');
-  const [added, setAdded] = useState(new Set());
-  const [network, setNetwork] = useState(false);
-  const [webPapers, setWebPapers] = useState([]);
-  const [submitted, setSubmitted] = useState(null);
+  const [revision, setRevision] = useState(0);
   const generation = useRef(0);
   const assist = useLiteratureAssist(project, 'search');
-  const run = async (params, off = 0) => {
+  const run = async (params, offset = 0) => {
     const version = ++generation.current;
     setBusy(true); setError('');
-    try { const response = await request('/papers?' + new URLSearchParams({ ...params, offset: off, limit: 30 })); if (version === generation.current) { setResult(response); setSearched(params); setOffset(off); } }
-    catch (e) { if (version === generation.current) setError(e.message); }
+    try {
+      const response = await request('/literature/search?' + new URLSearchParams({ ...params, offset, limit: 30 }));
+      if (version === generation.current) { setResult(response); setSearched(params); }
+    } catch (e) { if (version === generation.current) setError(e.message); }
     finally { if (version === generation.current) setBusy(false); }
+  };
+  const search = () => {
+    const params = { ...filters, q: query.trim() };
+    setResult(null); setRevision((value) => value + 1); assist.reset(); run(params);
+    if (network) assist.start('关键词：' + query.trim(), { network: true, filters });
   };
   useEffect(() => {
     if (mode === 'advanced') request('/venues').then((r) => setVenues(r.venues)).catch((e) => setError(e.message));
-    if (mode === 'keyword' && initialQuery.trim()) run({ ...defaults, q: initialQuery });
+    if (mode === 'keyword' && initialQuery.trim()) search();
     return () => { generation.current++; };
   }, []);
-  useEffect(() => { if (assist.task?.output) { const output = assist.task.output; const params = mode !== 'natural' ? submitted : { ...defaults, ...Object.fromEntries(Object.entries(output).filter(([key, value]) => !['explanation', 'venue', 'papers'].includes(key) && value !== null)) }; setWebPapers(output.papers || []); if (params) { if (mode === 'natural') { setQuery(output.q); setFilters(params); } run(params); } } }, [assist.task?.output]);
-  const add = async (paper) => {
-    setAdding(paper.id); setError('');
-    try { if (paper.from_web) await request(`/projects/${project.id}/literature/assist/${assist.task.session_id}/collect`, { method: 'POST', body: { candidate: paper.candidate } }); else await request(`/papers/${paper.id}/library`, { method: 'POST', body: { project_id: project.id } }); setAdded((old) => new Set([...old, paper.id])); onAdded(); }
-    catch (e) { setError(e.message); } finally { setAdding(''); }
-  };
-  const search = () => {
-    const params = { ...filters, q: query }; setSubmitted(params); setWebPapers([]); setError(''); setAdded(new Set());
-    if (mode !== 'natural') run(params); else setResult(null);
-    if (mode === 'natural' || network) assist.start(mode === 'natural' ? natural : '关键词：' + query, { network, filters: mode === 'natural' ? {} : filters });
-  };
-  const visiblePapers = [...(result?.papers || []).map((paper) => ({ ...paper, also_web: webPapers.some((web) => samePaper(paper, web)) })), ...webPapers.filter((web) => !(result?.papers || []).some((paper) => samePaper(paper, web)))];
-  const title = { keyword: '检索文献', advanced: '高级检索', natural: 'Codex 自然语言检索' }[mode];
-  const networkButton = <button type="button" className="lit-network-toggle" aria-pressed={network} title={network ? '本地 + 网络检索，点击关闭联网' : '仅检索本地，点击开启联网'} disabled={assist.busy || busy} onClick={() => { setNetwork((value) => !value); setWebPapers([]); setResult(null); assist.reset(); }}><Globe size={15} />网络检索</button>;
-  return <ResearchModal title={title} subtitle="找到相关论文，加入当前项目的自选文献。" wide onClose={onClose}>
-    {mode === 'natural' ? <div className="lit-natural"><Field label="描述你想找的论文"><textarea rows={3} value={natural} onChange={(e) => setNatural(e.target.value)} placeholder="例如：2022 年以来，CCF A 类会议中关于图神经网络的论文" /></Field><div className="rw-toolbar"><button className="rw-primary" disabled={!project || !natural.trim() || assist.busy || busy} onClick={search}><Sparkles size={15} />{assist.busy ? 'Codex 正在检索…' : '开始检索'}</button>{networkButton}{assist.busy && <button onClick={assist.stop} disabled={!assist.task?.session_id}><Square size={13} />停止</button>}</div></div> : <form className="lit-query" onSubmit={(e) => { e.preventDefault(); search(); }}><Search size={17} /><input autoFocus aria-label="检索关键词" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="标题、作者或主题关键词" /><button className="rw-primary" disabled={busy || assist.busy || (network && !project)}>检索</button>{networkButton}{assist.busy && <button type="button" onClick={assist.stop} disabled={!assist.task?.session_id}>停止</button>}</form>}
-    {mode === 'advanced' && <div className="lit-advanced rw-form-grid"><Field label="等级"><select value={filters.rank} onChange={(e) => setFilters({ ...filters, rank: e.target.value })}><option value="">全部等级</option>{['A', 'B', 'C'].map((rank) => <option key={rank}>{rank}</option>)}</select></Field><Field label="期刊 / 会议"><select value={filters.type} onChange={(e) => setFilters({ ...filters, type: e.target.value })}><option value="">全部类型</option><option value="Journal">期刊</option><option value="Conference">会议</option></select></Field><Field label="起始年份"><input type="number" value={filters.year_from} onChange={(e) => setFilters({ ...filters, year_from: e.target.value })} /></Field><Field label="截止年份"><input type="number" value={filters.year_to} onChange={(e) => setFilters({ ...filters, year_to: e.target.value })} /></Field><Field label="作者"><input value={filters.author} onChange={(e) => setFilters({ ...filters, author: e.target.value })} /></Field><Field label="期刊 / 会议名称"><select value={filters.venue_id} onChange={(e) => setFilters({ ...filters, venue_id: e.target.value })}><option value="">全部期刊与会议</option>{venues.filter((v) => v.stream).map((v) => <option key={v.id} value={v.id}>{v.abbreviation} · {v.rank}</option>)}</select></Field></div>}
+  return <ResearchModal title={mode === 'advanced' ? '高级检索' : '检索文献'} wide onClose={onClose}>
+    <form className="lit-query" onSubmit={(e) => { e.preventDefault(); search(); }}>
+      <input autoFocus aria-label="检索关键词" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="标题、作者或主题关键词" />
+      <button type="button" className="lit-network-toggle" aria-pressed={network} disabled={busy || assist.busy || !project} title={network ? '数据库 + 网络检索' : '仅检索数据库'} onClick={() => { setNetwork(!network); onNetworkChange?.(!network); assist.reset(); }}><Globe size={15} />网络检索</button>
+      <button className="rw-primary" disabled={busy || assist.busy || (network && !project)}><Search size={15} />搜索</button>
+    </form>
+    {mode === 'advanced' && <>
+      <div className="lit-advanced rw-form-grid">
+        <Field label="等级"><select value={filters.rank} onChange={(e) => setFilters({ ...filters, rank: e.target.value })}><option value="">全部等级</option>{['A', 'B', 'C'].map((rank) => <option key={rank}>{rank}</option>)}</select></Field>
+        <Field label="期刊 / 会议"><select value={filters.type} onChange={(e) => setFilters({ ...filters, type: e.target.value })}><option value="">全部类型</option><option value="Conference">会议</option><option value="Journal">期刊</option></select></Field>
+        <Field label="起始年份"><input type="number" value={filters.year_from} onChange={(e) => setFilters({ ...filters, year_from: e.target.value })} /></Field>
+        <Field label="截止年份"><input type="number" value={filters.year_to} onChange={(e) => setFilters({ ...filters, year_to: e.target.value })} /></Field>
+        <Field label="作者"><input value={filters.author} onChange={(e) => setFilters({ ...filters, author: e.target.value })} /></Field>
+        <Field label="期刊 / 会议名称"><select value={filters.venue_id} onChange={(e) => setFilters({ ...filters, venue_id: e.target.value })}><option value="">全部期刊与会议</option>{venues.filter((v) => v.stream).map((v) => <option key={v.id} value={v.id}>{v.abbreviation} · {v.rank}</option>)}</select></Field>
+      </div>
+      <button type="button" className="lit-chat-hint" disabled={!project} onClick={() => openChat(query)}><MessageSquare size={15} />你也可以通过聊天来检索</button>
+    </>}
+    {(busy || assist.busy) && <div className="lit-search-progress" role="status"><span>{assist.busy ? '正在查询数据库和网络…' : '正在查询数据库…'}</span>{assist.busy && <button type="button" onClick={assist.stop} disabled={!assist.task?.session_id}>停止联网</button>}</div>}
     {assist.task?.notice && <p className="rw-warning" role="status">{assist.task.notice}</p>}
-    {assist.task?.output?.explanation && <div className="lit-explanation"><ReactMarkdown components={{ a: ({ children, href }) => <a href={href} target="_blank" rel="noreferrer">{children}</a> }}>{assist.task.output.explanation}</ReactMarkdown></div>}
-    {assist.task?.status === 'waiting_approval' && <p className="rw-warning">Codex 等待授权。<button onClick={() => openSession(assist.task.session_id)}>查看会话</button></p>}
+    {assist.task?.status === 'waiting_approval' && <p className="rw-warning">网络检索等待授权。<button onClick={() => openSession(assist.task.session_id)}>查看会话</button></p>}
     {(error || assist.error) && <p role="alert" className="rw-dialog-error">{error || assist.error}</p>}
-    {busy && <p role="status" className="rw-muted">正在检索…</p>}
-    {(result || webPapers.length > 0) && <><div className="lit-results-caption"><strong>本地 {result?.total.toLocaleString() || 0} 篇{network && ' · 网络 ' + webPapers.length + ' 篇'}</strong><small>添加后显示在自选文献中</small></div><div className="lit-results">{visiblePapers.map((paper) => <article key={paper.id}><div><h3>{articleUrl(paper) ? <a href={articleUrl(paper)} target="_blank" rel="noreferrer">{paper.title}</a> : paper.title}</h3><p><span className="lit-source-badge">{paper.from_web ? '网络' : paper.also_web ? '本地 + 网络' : '本地'}</span>{paper.year || '年份未知'} · {paper.venue_name || '未注明期刊 / 会议'} {paper.rank && <Badge>CCF {paper.rank}</Badge>}</p><small>{paper.authors.join(', ')}</small></div><button aria-label={`加入自选：${paper.title}`} disabled={!project || added.has(paper.id) || Boolean(adding)} onClick={() => add(paper)}>{added.has(paper.id) ? <Check size={16} /> : <Plus size={16} />}{added.has(paper.id) ? '已加入' : '自选'}</button></article>)}{!visiblePapers.length && !assist.busy && <Empty><Search size={28} /><h3>没有匹配的文献</h3><p>试试减少关键词或放宽年份、等级条件。</p></Empty>}</div>{result?.total > 30 && <div className="rw-pagination rw-toolbar"><button disabled={busy || assist.busy || !offset} onClick={() => run(searched, Math.max(0, offset - 30))}>上一页</button><span>本地 {offset + 1}–{Math.min(offset + 30, result.total)} / {result.total}</span><button disabled={busy || assist.busy || offset + 30 >= result.total} onClick={() => run(searched, offset + 30)}>下一页</button></div>}</>}
+    <LiteratureSearchResults key={revision} result={result} webPapers={network ? assist.task?.output?.papers || [] : []} project={project} sessionId={assist.task?.session_id} onAdded={onAdded} busy={busy || assist.busy} onPage={(offset) => run(searched, offset)} />
     {!project && <p className="rw-muted">先创建一个项目，即可保存自选文献。</p>}
   </ResearchModal>;
 }

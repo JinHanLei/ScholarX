@@ -133,5 +133,7 @@ def register_library_api(app,store,literature,codex):
     register_assist(api,store,literature,codex)
     from .literature_translation import register_translation
     register_translation(api,store)
+    from .literature_catalog import register_catalog
+    register_catalog(api,store,literature)
 
     app.register_blueprint(api,url_prefix='/api')
