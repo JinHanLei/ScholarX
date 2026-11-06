@@ -1,12 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { Plus, Presentation, Check, LoaderCircle, History, ArrowUpRight, Pencil, FileText, GitBranch, Download, Undo2, Redo2, Save } from 'lucide-react';
+import { Plus, Presentation, Check, LoaderCircle, History, ArrowUpRight, GitBranch, Download, Undo2, Redo2, Save, ChevronDown } from 'lucide-react';
 import { request } from './shared.jsx';
+import ResearchModal from './ResearchModal.jsx';
 import ModelCanvas from './idea/ModelCanvas.jsx';
+import ModelPreview from './idea/ModelPreview.jsx';
+import DesignNotes from './idea/DesignNotes.jsx';
 import useIdeaVersions from './idea/useIdeaVersions.js';
 import { STAGES, changedNodes, semanticGraph } from './idea/ideaGraph.js';
 import './idea/idea.css';
+import './idea/ideaPreview.css';
+
+function versionChangeSummary(version) {
+  const changes = version.changes;
+  return [changes.added.length && `新增 ${changes.added.join('、')}`, changes.modified.length && `调整 ${changes.modified.join('、')}`, changes.removed.length && `移除 ${changes.removed.join('、')}`, changes.connections_changed && '连接关系变化', changes.description_changed && '设计说明更新'].filter(Boolean).join(' · ') || '初始模型设计';
+}
 
 export default function IdeaWorkspace({ project, onExperiment }) {
   const [ideas, setIdeas] = useState([]), [legacy, setLegacy] = useState([]);
@@ -15,6 +22,8 @@ export default function IdeaWorkspace({ project, onExperiment }) {
   const [historical, setHistorical] = useState(null), [editingNotes, setEditingNotes] = useState(false), [exporting, setExporting] = useState(false);
   const [notice, setNotice] = useState('');
   const [publishing, setPublishing] = useState(false);
+  const [editingModel, setEditingModel] = useState(false), [editorNode, setEditorNode] = useState(null);
+  const [showAllVersions, setShowAllVersions] = useState(false);
   const state = useRef({ record: null, document: null, dirty: false, saving: false, sequence: 0, dragging: false, live: true, undo: [], redo: [], historyAt: 0, dragStart: null });
   const { versions } = useIdeaVersions(project.id);
   const ownVersions = versions.filter((version) => version.idea_id === record?.idea_id);
@@ -23,6 +32,7 @@ export default function IdeaWorkspace({ project, onExperiment }) {
   const canPublish = Boolean(document?.graph.nodes.length && (unpublished || ['imported', 'cancelled'].includes(latest?.stage)));
   const viewedVersion = historical ? ownVersions.find((v) => v.id === historical) : null;
   const displayed = viewedVersion?.document || document;
+  const differences = viewedVersion ? changedNodes(ownVersions.find((v) => v.number < viewedVersion.number)?.document, viewedVersion.document) : {};
   const retainDraft = useCallback(() => {
     const current = state.current;
     if (!current.record) return;
@@ -156,25 +166,33 @@ export default function IdeaWorkspace({ project, onExperiment }) {
     try { const { exportPresentation } = await import('./idea/ideaExport.js'); await exportPresentation(displayed, viewedVersion?.number || (!unpublished ? latest?.number : null)); }
     catch (e) { setError(`PPT 导出失败：${e.message}`); } finally { setExporting(false); }
   };
+  const openModel = (nodeId) => { setEditorNode(nodeId || null); setEditingModel(true); };
+  const closeModel = () => { state.current.dragging = false; setEditingModel(false); void save(); };
+  const saveState = <span className="idea-save-state">{saving ? <LoaderCircle className="idea-spin" size={13} /> : dirty ? <span className="idea-status-dot" /> : <Check size={13} />}{saving ? (publishing ? '保存版本中' : '保存草稿中') : dirty ? '草稿待保存' : '草稿已保存'}</span>;
+  const errorBanner = error && <div className="idea-error" role="alert"><span>{error}</span>{record && <><button onClick={downloadLocal}><Download size={13} />保留本地副本</button><button onClick={reload}>重新加载</button></>}</div>;
   return <div className="idea-workspace" onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) { e.preventDefault(); travel(e.shiftKey ? 'redo' : 'undo'); } }}>
-    <header className="idea-heading"><div><span className="idea-eyebrow">FROM IDEA TO EXPERIMENT</span><h1>模型构想<span>Idea</span></h1></div><button className="idea-new" onClick={() => create()}><Plus size={15} />新建 Idea</button></header>
-    {error && <div className="idea-error" role="alert"><span>{error}</span>{record && <><button onClick={downloadLocal}><Download size={13} />保留本地副本</button><button onClick={reload}>重新加载</button></>}</div>}
+    <header className="idea-heading"><div><h1>模型构想<span>Idea</span></h1></div><button className="idea-new" onClick={() => create()}><Plus size={15} />新建 Idea</button></header>
+    {!editingModel && errorBanner}
     {!displayed ? <section className="idea-onboarding"><GitBranch size={35} /><h2>从一个 backbone 开始</h2><p>和 Codex 讨论模型结构，在画布中继续调整。设计完成后保存为版本，自动开始对应实验。</p><button className="idea-primary" onClick={() => create()}><Plus size={16} />创建模型画布</button>{legacy.length > 0 && <div className="idea-legacy"><span>继续已有构想</span>{legacy.map((item) => <button key={item.id} onClick={() => create(item.id)}>{item.name}<ArrowUpRight size={13} /></button>)}</div>}</section> : <>
-      <div className="idea-document-toolbar"><div className="idea-document-title"><select aria-label="选择模型构想" value={record.idea_id} onChange={(e) => choose(e.target.value)}>{ideas.map((item) => <option key={item.idea_id} value={item.idea_id}>{item.document.name}</option>)}</select><span className="idea-version-pill">{viewedVersion ? `V${viewedVersion.number}` : latest ? `V${latest.number}${unpublished ? ' · 草稿' : ''}` : 'DRAFT'}</span></div><div className="idea-document-actions"><button title="撤销修改" disabled={Boolean(viewedVersion) || !state.current.undo.length} onClick={() => travel('undo')}><Undo2 size={14} /></button><button title="重做修改" disabled={Boolean(viewedVersion) || !state.current.redo.length} onClick={() => travel('redo')}><Redo2 size={14} /></button><span className="idea-save-state">{saving ? <LoaderCircle className="idea-spin" size={13} /> : dirty ? <span className="idea-status-dot" /> : <Check size={13} />}{saving ? (publishing ? '保存版本中' : '保存草稿中') : dirty ? '草稿待保存' : '草稿已保存'}</span><button disabled={exporting || !displayed.graph.nodes.length} onClick={exportPpt}><Presentation size={15} />{exporting ? '导出中' : '导出 PPT'}</button>{!viewedVersion && <button className="idea-primary idea-publish" disabled={saving || !canPublish || Boolean(error)} onClick={() => void save(true)} title="创建正式版本并自动开始实验"><Save size={15} />{publishing ? '提交中…' : '保存为版本'}</button>}</div></div>
+      <div className="idea-document-toolbar"><div className="idea-document-title"><select aria-label="选择模型构想" value={record.idea_id} onChange={(e) => choose(e.target.value)}>{ideas.map((item) => <option key={item.idea_id} value={item.idea_id}>{item.document.name}</option>)}</select><span className="idea-version-pill">{viewedVersion ? `V${viewedVersion.number}` : latest ? `V${latest.number}${unpublished ? ' · 草稿' : ''}` : 'DRAFT'}</span></div><div className="idea-document-actions">{!editingModel && !viewedVersion && saveState}<button disabled={exporting || !displayed.graph.nodes.length} onClick={exportPpt}><Presentation size={15} />{exporting ? '导出中' : '导出 PPT'}</button>{!viewedVersion && <button className="idea-primary idea-publish" disabled={saving || !canPublish || Boolean(error)} onClick={() => void save(true)} title="创建正式版本并自动开始实验"><Save size={15} />{publishing ? '提交中…' : '保存为版本'}</button>}</div></div>
       {viewedVersion && <div className="idea-history-banner"><History size={15} />正在查看 V{viewedVersion.number}<button onClick={() => setHistorical(null)}>返回当前设计</button><button onClick={() => { setHistorical(null); edit(structuredClone(viewedVersion.document)); }}>基于此版本继续</button></div>}
-      <ModelCanvas key={historical || record.idea_id} graph={displayed.graph} readOnly={Boolean(viewedVersion)} differences={viewedVersion ? changedNodes(ownVersions.find((v) => v.number < viewedVersion.number)?.document, viewedVersion.document) : {}}
-        onInteraction={(dragging) => { const current = state.current; if (dragging) current.dragStart = structuredClone(current.document); else if (current.dragStart && JSON.stringify(current.dragStart) !== JSON.stringify(current.document)) { current.undo = [...current.undo.slice(-39), current.dragStart]; current.redo = []; current.dragStart = null; } current.dragging = dragging; if (!dragging) void save(); }} onChange={(graph) => edit((doc) => ({ ...doc, graph }))} />
-      <div className="idea-canvas-footnote"><span>{notice || '编辑内容自动保存为草稿；设计完成后点击“保存为版本”，实验才会开始。'}</span><span>React Flow</span></div>
-      <section className="idea-notes"><header><div><FileText size={17} /><h2>设计说明</h2></div>{!viewedVersion && <button onClick={() => setEditingNotes(!editingNotes)}><Pencil size={13} />{editingNotes ? '预览说明' : '编辑说明'}</button>}</header>
-        {editingNotes && !viewedVersion ? <><label>构想名称<input aria-label="Idea 名称" value={document.name} onChange={(e) => edit((doc) => ({ ...doc, name: e.target.value }))} /></label><textarea aria-label="模型设计说明" placeholder="研究问题、核心假设、模块职责、训练目标与实验设置……支持 Markdown。" rows={7} value={document.description} onChange={(e) => edit((doc) => ({ ...doc, description: e.target.value }))} /></> : <div className="idea-markdown">{displayed.description ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayed.description}</ReactMarkdown> : <p className="idea-placeholder">补充为什么这样设计，以及希望通过实验验证什么。</p>}</div>}
-      </section>
-      <section className="idea-history"><header><div><History size={17} /><h2>修改记录与版本</h2><span>{ownVersions.length}</span></div><small>Idea 与 Experiment 共用版本</small></header>
-        {!ownVersions.length ? <p className="idea-placeholder">完成设计并点击“保存为版本”后，这里会出现 V1 和对应实验进度。</p> : ownVersions.map((version) => <article className={`idea-version-row ${historical === version.id ? 'selected' : ''}`} key={version.id}>
+      <ModelPreview key={`preview-${historical || record.idea_id}`} graph={displayed.graph} readOnly={Boolean(viewedVersion)} differences={differences} onEdit={openModel} />
+      {!viewedVersion && <div className="idea-canvas-footnote"><span>{notice || '编辑自动保存为草稿；点击“保存为版本”后开始对应实验。'}</span></div>}
+      <DesignNotes key={`notes-${historical || record.idea_id}`} document={displayed} readOnly={Boolean(viewedVersion)} editing={editingNotes && !viewedVersion} onEditingChange={(value) => { setEditingNotes(value); if (!value) void save(); }} onChange={edit} />
+      <section className="idea-history"><header><div><History size={16} /><h2>修改记录与版本</h2><span>{ownVersions.length}</span></div><small>Idea / Experiment 同版本</small></header>
+        {!ownVersions.length ? <p className="idea-placeholder">完成设计并点击“保存为版本”后，这里会出现 V1 和对应实验进度。</p> : (showAllVersions ? ownVersions : ownVersions.slice(0, 3)).map((version) => <article className={`idea-version-row ${historical === version.id ? 'selected' : ''}`} key={version.id}>
           <button className="idea-version-label" onClick={async () => { if (await save()) { setHistorical(version.id); setEditingNotes(false); } }}>V{version.number}</button>
-          <div className="idea-version-copy"><strong>{version.purpose}</strong><p>{[version.changes.added.length && `新增 ${version.changes.added.join('、')}`, version.changes.modified.length && `调整 ${version.changes.modified.join('、')}`, version.changes.removed.length && `移除 ${version.changes.removed.join('、')}`, version.changes.connections_changed && '连接关系变化', version.changes.description_changed && '设计说明更新'].filter(Boolean).join(' · ') || '初始模型设计'}</p><small>{new Date(version.created_at).toLocaleString()} · {version.runs.length} 次运行</small></div>
+          <div className="idea-version-copy"><strong title={versionChangeSummary(version)}>{versionChangeSummary(version)}</strong><small>{version.purpose} · {new Date(version.created_at).toLocaleString()} · {version.runs.length} 次运行</small></div>
           <span className={`idea-stage-tag ${version.stage}`}>{STAGES[version.stage]}</span><button title={`查看 V${version.number} 对应实验`} onClick={() => onExperiment(version.id)}><ArrowUpRight size={17} /></button>
         </article>)}
+        {ownVersions.length > 3 && <button className="idea-history-more" aria-expanded={showAllVersions} onClick={() => setShowAllVersions(!showAllVersions)}><ChevronDown size={13} />{showAllVersions ? '收起早期版本' : `查看全部 ${ownVersions.length} 个版本`}</button>}
       </section>
+      {editingModel && <ResearchModal title={viewedVersion ? `查看 V${viewedVersion.number} 模型` : '编辑模型'} subtitle={viewedVersion ? '历史版本只读' : '调整模块和连接，修改自动保存为草稿。完成后返回页面保存为版本。'} onClose={closeModel} wide className="idea-model-dialog">
+        {errorBanner}
+        <div className="idea-editor-actions">{!viewedVersion && <><button title="撤销修改" disabled={!state.current.undo.length} onClick={() => travel('undo')}><Undo2 size={14} />撤销</button><button title="重做修改" disabled={!state.current.redo.length} onClick={() => travel('redo')}><Redo2 size={14} />重做</button>{saveState}</>}<button className="idea-primary" onClick={closeModel}><Check size={14} />{viewedVersion ? '返回预览' : '完成编辑'}</button></div>
+        <ModelCanvas graph={displayed.graph} initialSelection={editorNode} readOnly={Boolean(viewedVersion)} differences={differences}
+          onInteraction={(dragging) => { const current = state.current; if (dragging) current.dragStart = structuredClone(current.document); else if (current.dragStart) { if (JSON.stringify(current.dragStart) !== JSON.stringify(current.document)) { current.undo = [...current.undo.slice(-39), current.dragStart]; current.redo = []; } current.dragStart = null; } current.dragging = dragging; if (!dragging) void save(); }} onChange={(graph) => edit((doc) => ({ ...doc, graph }))} />
+      </ResearchModal>}
     </>}
   </div>;
 }

@@ -2,6 +2,63 @@ import { test, expect } from '@playwright/test';
 import JSZip from 'jszip';
 import { readFile } from 'node:fs/promises';
 
+test('compact overview keeps the full notes and version archive without changing the saved design', async ({ page, request }) => {
+  const project = (await (await request.post('/api/projects', { data: { name: `Idea Overview TEST DATA ${Date.now()}` } })).json()).project;
+  let idea = (await (await request.post(`/api/projects/${project.id}/ideas`, { data: { name: 'Compact model TEST DATA' } })).json()).idea;
+  const document = { name: idea.document.name, description: '### 研究问题\nTEST DATA: Can decomposition improve retrieval?\n\n### 核心方法\nCompare raw inputs and decomposed components under the same budget.\n\n### 验证方案\nFreeze the test split and retain negative results.\n\n### 证据边界\nThis is an acceptance fixture, not research evidence.', graph: {
+    nodes: ['历史窗口', '分量距离', '成熟历史记忆', '同预算近邻', '验证与冻结测试', '候选接入'].map((label, index) => ({ id: `n${index}`, label, kind: 'module', description: `TEST DATA module ${index}`, position: { x: (index % 4) * 280, y: Math.floor(index / 4) * 170 } })),
+    edges: Array.from({ length: 4 }, (_, i) => ({ id: `e${i}`, source: `n${i}`, target: `n${i + 1}`, label: '' })),
+  } };
+  for (let i = 1; i <= 4; i++) {
+    document.graph.nodes[0].parameters = `TEST DATA revision ${i}`;
+    const response = await request.post(`/api/projects/${project.id}/ideas/${idea.idea_id}/versions`, { data: { expected_revision: idea.revision, document } });
+    expect(response.ok()).toBeTruthy(); idea = (await response.json()).idea;
+  }
+  const baseline = structuredClone(idea);
+  await page.addInitScript((pid) => { localStorage.setItem('easyref.project', pid); localStorage.setItem('easyref.workspace', 'Idea'); }, project.id);
+  await page.goto('/');
+  await expect(page.locator('.idea-preview-node')).toHaveCount(6);
+  await expect(page.locator('.react-flow')).toHaveCount(0);
+  expect((await page.locator('.idea-preview-viewport').boundingBox()).height).toBeLessThanOrEqual(310);
+  await expect(page.locator('.idea-version-row')).toHaveCount(3);
+  await expect(page.locator('.idea-version-row').last()).toBeInViewport();
+  await page.getByRole('button', { name: '展开说明', exact: true }).click();
+  await expect(page.locator('.idea-markdown')).toContainText('This is an acceptance fixture, not research evidence.');
+  await page.getByRole('button', { name: '收起说明', exact: true }).click();
+  await page.locator('.idea-preview-node').last().click();
+  await expect(page.locator('.idea-preview-details')).toContainText('TEST DATA module 5');
+  await page.getByRole('button', { name: '收起模块详情', exact: true }).click();
+  await page.getByRole('button', { name: '编辑模型', exact: true }).click();
+  await expect.poll(async () => (await page.locator('.react-flow__node').first().boundingBox())?.width || 0).toBeGreaterThan(45);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: '查看全部 4 个版本', exact: true }).click();
+  await expect(page.locator('.idea-version-row')).toHaveCount(4);
+  await page.getByRole('button', { name: 'V1', exact: true }).click();
+  await expect(page.getByRole('button', { name: '保存为版本', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '展开查看', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('历史版本只读');
+  await expect(page.getByRole('button', { name: '自动排版', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '返回预览', exact: true }).click();
+  await page.getByRole('button', { name: '返回当前设计', exact: true }).click();
+  await page.getByRole('button', { name: '收起早期版本', exact: true }).click();
+  const stored = (await (await request.get(`/api/projects/${project.id}/ideas/${idea.idea_id}`)).json()).idea;
+  expect(stored.revision).toBe(baseline.revision);
+  expect(stored.document).toEqual(baseline.document);
+  expect((await (await request.get(`/api/projects/${project.id}/idea-versions`)).json()).versions).toHaveLength(4);
+  await page.reload();
+  await expect(page.locator('.idea-preview-node')).toHaveCount(6);
+  await page.screenshot({ path: 'test-results/idea-overview.png', fullPage: true });
+  await page.setViewportSize({ width: 744, height: 892 });
+  await expect.poll(() => page.locator('.idea-preview-viewport').evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBeTruthy();
+  await page.screenshot({ path: 'test-results/idea-overview-narrow.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByLabel('模型结构预览')).toBeVisible();
+  await expect.poll(() => page.locator('.idea-preview-viewport').evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBeTruthy();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+  await page.screenshot({ path: 'test-results/idea-overview-mobile.png', fullPage: true });
+});
+
 test('canvas autosaves drafts but only the version button starts experiments, with editable PPT export', async ({ page, request }) => {
   const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   const project = (await (await request.post('/api/projects', { data: { name: `Idea Canvas TEST DATA ${Date.now()}` } })).json()).project;
@@ -12,6 +69,9 @@ test('canvas autosaves drafts but only the version button starts experiments, wi
   await page.getByRole('button', { name: '创建模型画布' }).click();
   await page.getByLabel('Idea 名称', { exact: true }).fill('TEST DATA · Retrieval backbone');
   await page.getByLabel('模型设计说明').fill('TEST DATA only: verify the model editor and version linkage.');
+  await page.getByRole('button', { name: '完成说明', exact: true }).click();
+  await expect(page.locator('.react-flow')).toHaveCount(0);
+  await page.getByRole('button', { name: '编辑模型', exact: true }).click();
   await page.getByRole('button', { name: '添加 Backbone', exact: true }).click();
   await page.getByLabel('模块名称', { exact: true }).fill('Temporal Encoder');
   await page.getByLabel('模块方法说明').fill('Encode the input sequence.');
@@ -19,10 +79,12 @@ test('canvas autosaves drafts but only the version button starts experiments, wi
   expect((await (await request.get(`/api/projects/${project.id}/idea-versions`)).json()).versions).toEqual([]);
   await expect(page.getByLabel('版本自动流程')).toHaveCount(0);
   await page.reload();
-  await expect(page.locator('.idea-node')).toContainText('Temporal Encoder');
+  await expect(page.locator('.idea-preview-node')).toContainText('Temporal Encoder');
   expect((await (await request.get(`/api/projects/${project.id}/idea-versions`)).json()).versions).toEqual([]);
-  await page.locator('.idea-node').click();
+  await page.locator('.idea-preview-node').click();
+  await page.getByRole('button', { name: '编辑此模块', exact: true }).click();
   await page.getByLabel('模块方法说明').fill('The final design immediately before submission.');
+  await page.getByRole('button', { name: '完成编辑', exact: true }).click();
   await page.getByRole('button', { name: '保存为版本', exact: true }).click();
   await expect(page.locator('.idea-version-row').first()).toContainText('V1');
   await expect(page.getByLabel('版本自动流程')).toContainText('V1');
@@ -30,10 +92,11 @@ test('canvas autosaves drafts but only the version button starts experiments, wi
   expect(version.document.graph.nodes[0].description).toBe('The final design immediately before submission.');
   await expect(page.getByRole('button', { name: '保存为版本', exact: true })).toBeDisabled();
   const before = (await (await request.get(`/api/projects/${project.id}/idea-versions`)).json()).versions.length;
-  await page.getByTitle('关闭模块说明').click();
+  await page.getByRole('button', { name: '编辑模型', exact: true }).click();
   await page.getByTitle('自动排版', { exact: true }).click();
   await expect(page.locator('.idea-save-state')).toHaveText('草稿已保存', { timeout: 12000 });
   expect((await (await request.get(`/api/projects/${project.id}/idea-versions`)).json()).versions).toHaveLength(before);
+  await page.getByRole('button', { name: '完成编辑', exact: true }).click();
   const downloaded = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出 PPT', exact: true }).click();
   const file = await downloaded;
@@ -41,13 +104,15 @@ test('canvas autosaves drafts but only the version button starts experiments, wi
   const slide = await zip.file('ppt/slides/slide1.xml').async('string');
   expect(slide).toContain('Temporal Encoder'); expect(slide).not.toContain('<p:pic>');
   await page.reload();
-  await expect(page.locator('.idea-node')).toContainText('Temporal Encoder');
+  await expect(page.locator('.idea-preview-node')).toContainText('Temporal Encoder');
   await page.getByTitle('查看 V1 对应实验').click();
   await expect(page.getByLabel('选择实验版本')).toHaveValue((await (await request.get(`/api/projects/${project.id}/idea-versions`)).json()).versions[0].id);
   await expect(page.locator('.idea-experiment-state')).toContainText('对应 Idea V1');
   await page.getByRole('button', { name: '返回模型图' }).click();
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByLabel('可编辑模型图')).toBeVisible();
+  await expect(page.getByLabel('模型结构预览')).toBeVisible();
+  await expect(page.locator('.react-flow')).toHaveCount(0);
+  expect((await page.locator('.idea-preview-viewport').boundingBox()).height).toBeLessThanOrEqual(310);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
   await page.screenshot({ path: 'test-results/idea-mobile.png', fullPage: true });
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -62,8 +127,9 @@ test('external Codex updates appear in the canvas and stale local edits cannot o
   await page.goto('/');
   const document = { name: 'External TEST DATA', description: 'Created from Codex via the local API.', graph: { nodes: [{ id: 'encoder', label: 'Codex Encoder', kind: 'backbone', position: { x: 100, y: 70 } }], edges: [] } };
   expect((await request.put(`/api/projects/${project.id}/ideas/${idea.idea_id}`, { data: { expected_revision: 0, document, purpose: 'TEST DATA Codex draw' } })).ok()).toBeTruthy();
-  await expect(page.locator('.idea-node')).toContainText('Codex Encoder', { timeout: 10000 });
-  await page.locator('.idea-node').click();
+  await expect(page.locator('.idea-preview-node')).toContainText('Codex Encoder', { timeout: 10000 });
+  await page.locator('.idea-preview-node').click();
+  await page.getByRole('button', { name: '编辑此模块', exact: true }).click();
   await page.getByLabel('模块名称', { exact: true }).fill('Local draft');
   const current = (await (await request.get(`/api/projects/${project.id}/ideas/${idea.idea_id}`)).json()).idea;
   current.document.graph.nodes[0].label = 'Remote winner';
@@ -72,10 +138,12 @@ test('external Codex updates appear in the canvas and stale local edits cannot o
   await expect(page.getByLabel('模块名称', { exact: true })).toHaveValue('Local draft');
   const stored = (await (await request.get(`/api/projects/${project.id}/ideas/${idea.idea_id}`)).json()).idea;
   expect(stored.document.graph.nodes[0].label).toBe('Remote winner');
+  await page.getByRole('button', { name: '完成编辑', exact: true }).click();
   await page.getByRole('button', { name: 'Experiment 模型与实验', exact: true }).click();
   await page.getByRole('button', { name: 'Idea 研究问题与构想', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('另一个编辑');
-  await page.locator('.idea-node').click();
+  await page.locator('.idea-preview-node').click();
+  await page.getByRole('button', { name: '编辑此模块', exact: true }).click();
   await expect(page.getByLabel('模块名称', { exact: true })).toHaveValue('Local draft');
   await page.getByRole('button', { name: '重新加载', exact: true }).click();
   await expect(page.getByLabel('模块名称', { exact: true })).toHaveValue('Remote winner');
@@ -89,7 +157,8 @@ test('dragging and connections remain drafts until submitted, and undo restores 
   await request.post(`/api/projects/${project.id}/ideas/${idea.idea_id}/versions`, { data: { expected_revision: 0, document } });
   await page.addInitScript((pid) => { localStorage.setItem('easyref.project', pid); localStorage.setItem('easyref.workspace', 'Idea'); }, project.id);
   await page.goto('/');
-  await expect(page.locator('.idea-node')).toHaveCount(3);
+  await expect(page.locator('.idea-preview-node')).toHaveCount(3);
+  await page.getByRole('button', { name: '编辑模型', exact: true }).click();
   const backbone = page.locator('.react-flow__node[data-id="node-1"]');
   await expect(backbone).toBeVisible();
   await page.getByTitle('适应画布', { exact: true }).click();
@@ -108,8 +177,10 @@ test('dragging and connections remain drafts until submitted, and undo restores 
   await expect(page.locator('.idea-save-state')).toHaveText('草稿已保存', { timeout: 10000 });
   expect((await (await request.get(`/api/projects/${project.id}/idea-versions`)).json()).versions).toHaveLength(1);
   await expect(page.locator('.idea-version-pill').first()).toContainText('草稿');
+  await page.getByRole('button', { name: '完成编辑', exact: true }).click();
   await page.getByRole('button', { name: '保存为版本', exact: true }).click();
   await expect(page.locator('.idea-version-row').first()).toContainText('V2', { timeout: 10000 });
+  await page.getByRole('button', { name: '编辑模型', exact: true }).click();
   await backbone.click(); await page.getByRole('button', { name: '删除模块', exact: true }).click();
   await expect(page.locator('.idea-node')).toHaveCount(2);
   await page.getByTitle('撤销修改', { exact: true }).click();

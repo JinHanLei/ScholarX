@@ -24,6 +24,64 @@ export function layoutGraph(graph) {
   dagre.layout(model);
   return { ...graph, nodes: graph.nodes.map((node) => ({ ...node, position: { x: model.node(node.id).x - NODE_WIDTH / 2, y: model.node(node.id).y - NODE_HEIGHT / 2 } })) };
 }
+// A display-only layout: opening the overview must never move saved nodes or create a draft.
+export const PREVIEW_WIDTH = 184;
+export const PREVIEW_HEIGHT = 72;
+export function previewGraph(graph, availableWidth = Infinity) {
+  if (!graph.nodes.length) return { nodes: [], edges: [], width: 0, height: 0 };
+  // Fold simple pipelines into reading rows. Branches and cycles retain Dagre routing.
+  const incoming = new Map(), outgoing = new Map();
+  graph.edges.forEach((edge) => {
+    incoming.set(edge.target, [...(incoming.get(edge.target) || []), edge]);
+    outgoing.set(edge.source, [...(outgoing.get(edge.source) || []), edge]);
+  });
+  const linear = graph.nodes.every((node) => (incoming.get(node.id)?.length || 0) <= 1 && (outgoing.get(node.id)?.length || 0) <= 1);
+  if (linear && Number.isFinite(availableWidth)) {
+    const ordered = [], visited = new Set(), byId = new Map(graph.nodes.map((node) => [node.id, node]));
+    // Connected paths precede isolated candidates; no relation is inferred between them.
+    const starts = graph.nodes.filter((node) => !incoming.has(node.id)).sort((a, b) => Number(outgoing.has(b.id)) - Number(outgoing.has(a.id)));
+    for (let node of starts) {
+      while (node && !visited.has(node.id)) {
+        ordered.push(node); visited.add(node.id);
+        node = byId.get(outgoing.get(node.id)?.[0]?.target);
+      }
+    }
+    if (ordered.length === graph.nodes.length) {
+      const gap = 32, margin = 14, rowGap = 24;
+      const columns = Math.min(ordered.length, Math.max(2, Math.floor((availableWidth - margin * 2 + gap) / (PREVIEW_WIDTH + gap))));
+      const positions = new Map(ordered.map((node, index) => {
+        const row = Math.floor(index / columns), column = row % 2 ? columns - 1 - index % columns : index % columns;
+        return [node.id, { x: margin + column * (PREVIEW_WIDTH + gap), y: margin + row * (PREVIEW_HEIGHT + rowGap) }];
+      }));
+      return {
+        folded: true,
+        width: margin * 2 + columns * (PREVIEW_WIDTH + gap) - gap,
+        height: margin * 2 + Math.ceil(ordered.length / columns) * (PREVIEW_HEIGHT + rowGap) - rowGap,
+        nodes: graph.nodes.map((node) => ({ ...node, position: positions.get(node.id) })),
+        edges: graph.edges.map((edge) => {
+          const from = positions.get(edge.source), to = positions.get(edge.target);
+          const points = from.y === to.y
+            ? [{ x: from.x + (to.x > from.x ? PREVIEW_WIDTH : 0), y: from.y + PREVIEW_HEIGHT / 2 }, { x: to.x + (to.x > from.x ? 0 : PREVIEW_WIDTH), y: to.y + PREVIEW_HEIGHT / 2 }]
+            : [{ x: from.x + PREVIEW_WIDTH / 2, y: from.y + PREVIEW_HEIGHT }, { x: to.x + PREVIEW_WIDTH / 2, y: to.y }];
+          return { ...edge, points };
+        }),
+      };
+    }
+  }
+  const model = new dagre.graphlib.Graph({ multigraph: true });
+  model.setGraph({ rankdir: 'LR', nodesep: 30, ranksep: 48, marginx: 20, marginy: 20 });
+  model.setDefaultEdgeLabel(() => ({}));
+  graph.nodes.forEach((node) => model.setNode(node.id, { width: PREVIEW_WIDTH, height: PREVIEW_HEIGHT }));
+  const ids = new Set(graph.nodes.map((node) => node.id));
+  const edges = graph.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target));
+  edges.forEach((edge) => model.setEdge(edge.source, edge.target, {}, edge.id));
+  dagre.layout(model);
+  return {
+    ...model.graph(),
+    nodes: graph.nodes.map((node) => ({ ...node, position: { x: model.node(node.id).x - PREVIEW_WIDTH / 2, y: model.node(node.id).y - PREVIEW_HEIGHT / 2 } })),
+    edges: edges.map((edge) => ({ ...edge, points: model.edge({ v: edge.source, w: edge.target, name: edge.id }).points })),
+  };
+}
 export function newNode(kind, index = 0) {
   return { id: crypto.randomUUID(), kind, label: kind === 'backbone' ? 'Backbone' : KINDS[kind].label,
     description: '', inputs: '', outputs: '', parameters: '', position: { x: 50 + (index % 4) * 280, y: 70 + Math.floor(index / 4) * 170 } };

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ReactFlow, Background, Controls, Handle, Position, MarkerType, applyNodeChanges, applyEdgeChanges, addEdge } from '@xyflow/react';
 import { Boxes, Plus, Trash2, X, GitBranch, ArrowRight, Maximize2, WandSparkles } from 'lucide-react';
 import { KINDS, NODE_WIDTH, NODE_HEIGHT, layoutGraph, newNode } from './ideaGraph.js';
@@ -15,13 +15,21 @@ function ModelNode({ data, selected }) {
 }
 const nodeTypes = { model: ModelNode };
 
-export default function ModelCanvas({ graph, onChange, readOnly = false, differences = {}, onInteraction }) {
-  const [selected, setSelected] = useState(null);
+export default function ModelCanvas({ graph, onChange, readOnly = false, differences = {}, onInteraction, initialSelection }) {
+  const [selected, setSelected] = useState(initialSelection ? { kind: 'node', id: initialSelection } : null);
   const [flow, setFlow] = useState(null);
+  const viewport = useRef(null);
   useEffect(() => {
     if (!flow || !graph.nodes.length) return;
-    const timer = setTimeout(() => flow.fitView({ padding: .25, maxZoom: 1.1, duration: 200 }), 100);
-    return () => clearTimeout(timer);
+    let frame;
+    // The native dialog starts hidden. Fit after it has a real size, also on resize.
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry.contentRect.width || !entry.contentRect.height) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => flow.fitView({ padding: .25, maxZoom: 1.1 }));
+    });
+    observer.observe(viewport.current);
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
   }, [flow, graph.nodes.length]);
   const nodes = useMemo(() => graph.nodes.map((node) => ({ id: node.id, type: 'model', position: node.position, data: { ...node, change: differences[node.id] }, selected: selected?.kind === 'node' && selected.id === node.id, width: NODE_WIDTH, height: NODE_HEIGHT })), [graph.nodes, differences, selected]);
   const edges = useMemo(() => graph.edges.map((edge) => ({ ...edge, type: 'smoothstep', selected: selected?.kind === 'edge' && selected.id === edge.id, markerEnd: { type: MarkerType.ArrowClosed, width: 17, height: 17 }, style: { stroke: '#9aabc3', strokeWidth: 1.6 }, labelStyle: { fontSize: 11, fill: '#62748d' } })), [graph.edges, selected]);
@@ -47,7 +55,7 @@ export default function ModelCanvas({ graph, onChange, readOnly = false, differe
       {!readOnly && <button title="自动排版" onClick={() => { onChange(layoutGraph(graph)); setTimeout(() => flow?.fitView({ padding: .22, duration: 250 }), 100); }}><WandSparkles size={14} /><span>自动排版</span></button>}
       <button title="适应画布" onClick={() => flow?.fitView({ padding: .22, duration: 250 })}><Maximize2 size={15} /></button>
     </div></div>
-    <div className="idea-canvas">
+    <div className="idea-canvas" ref={viewport}>
       <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onInit={setFlow} fitView fitViewOptions={{ padding: .25 }} minZoom={.15} maxZoom={1.8}
         onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={(edge) => !readOnly && onChange({ ...graph, edges: addEdge({ ...edge, id: crypto.randomUUID(), label: '' }, graph.edges) })}
         onNodeClick={(_, node) => setSelected({ kind: 'node', id: node.id })} onEdgeClick={(_, edge) => setSelected({ kind: 'edge', id: edge.id })} onPaneClick={() => setSelected(null)}
@@ -59,7 +67,7 @@ export default function ModelCanvas({ graph, onChange, readOnly = false, differe
       {current && <aside className="idea-inspector"><header><strong>{selected.kind === 'node' ? '模块说明' : '连接说明'}</strong><button title="关闭模块说明" onClick={() => setSelected(null)}><X size={16} /></button></header>
         {selected.kind === 'node' ? <><label>名称<input aria-label="模块名称" value={current.label} readOnly={readOnly} onChange={(e) => updateNode('label', e.target.value)} /></label>
           <label>类型<select aria-label="模块类型" value={current.kind} disabled={readOnly} onChange={(e) => updateNode('kind', e.target.value)}>{Object.entries(KINDS).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</select></label>
-          {[['description', '方法说明'], ['inputs', '输入'], ['outputs', '输出'], ['parameters', '参数与约束']].map(([key, label]) => <label key={key}>{label}<textarea aria-label={`模块${label}`} rows={key === 'description' ? 3 : 2} value={current[key]} readOnly={readOnly} onChange={(e) => updateNode(key, e.target.value)} /></label>)}</> : <><div className="idea-edge-path">{graph.nodes.find((n) => n.id === current.source)?.label}<ArrowRight size={14} />{graph.nodes.find((n) => n.id === current.target)?.label}</div><label>连接标注<input aria-label="连接标注" value={current.label} readOnly={readOnly} onChange={(e) => onChange({ ...graph, edges: graph.edges.map((edge) => edge.id === current.id ? { ...edge, label: e.target.value } : edge) })} /></label></>}
+          {[['description', '方法说明'], ['inputs', '输入'], ['outputs', '输出'], ['parameters', '参数与约束']].map(([key, label]) => <label key={key}>{label}<textarea aria-label={`模块${label}`} rows={key === 'description' ? 3 : 2} value={current[key] || ''} readOnly={readOnly} onChange={(e) => updateNode(key, e.target.value)} /></label>)}</> : <><div className="idea-edge-path">{graph.nodes.find((n) => n.id === current.source)?.label}<ArrowRight size={14} />{graph.nodes.find((n) => n.id === current.target)?.label}</div><label>连接标注<input aria-label="连接标注" value={current.label} readOnly={readOnly} onChange={(e) => onChange({ ...graph, edges: graph.edges.map((edge) => edge.id === current.id ? { ...edge, label: e.target.value } : edge) })} /></label></>}
         {!readOnly && <button className="idea-delete" onClick={remove}><Trash2 size={13} />删除{selected.kind === 'node' ? '模块' : '连接'}</button>}
       </aside>}
     </div>
