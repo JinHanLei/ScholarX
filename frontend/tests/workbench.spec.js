@@ -12,7 +12,7 @@ function testPdf() {
   return Buffer.from(text);
 }
 
-test('five workspaces, actual persistence, anchored outlines and PDF rendering', async ({ page, request }) => {
+test('research workspaces, actual persistence, anchored outlines and PDF rendering', async ({ page, request }) => {
   const errors = []; page.on('pageerror', (e) => errors.push(e.message));
   const name = `Browser TEST DATA ${Date.now()}`;
   await page.goto('/');
@@ -90,9 +90,12 @@ test('five workspaces, actual persistence, anchored outlines and PDF rendering',
   await page.reload();
   await expect(page.locator('.rw-topbar')).toContainText(name);
   await expect(page.locator('.rw-paragraph-text').first()).toContainText('Edited TEST paragraph.');
-  await page.getByRole('button', { name: 'Review 审稿、修订与投稿' }).click();
+  await page.getByRole('button', { name: 'Review 回复审稿人' }).click();
+  await expect(page.getByLabel('审稿意见原文')).toBeVisible();
+  await expect(page.getByRole('button', { name: '自动处理并生成回复' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Polish 对抗审查' }).click();
   await expect(page.getByText('Research Claims & Evidence')).toBeVisible();
-  await expect(page.getByRole('button', { name: '开始真实审稿' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '开始对抗审查' })).toBeEnabled();
   await page.getByRole('button', { name: 'Literature 文献与证据' }).click();
   await expect(page.getByLabel('文献检索关键词')).toBeVisible();
   const ref = await (await request.post('/api/papers', { data: { title: name + ' PDF fixture', authors: ['Test Runner'], year: 2026 } })).json();
@@ -129,7 +132,7 @@ test('Codex panel layout fits narrow width with genuine workflow progress', asyn
   await expect(page.locator('.rw-header')).toHaveCount(0);
   await expect(page.locator('.rw-progress-step.completed')).toContainText('Literature');
   await expect(page.locator('.rw-progress-step.running')).toContainText('Idea');
-  await expect(page.locator('.rw-progress-step.pending')).toHaveCount(3);
+  await expect(page.locator('.rw-progress-step.pending')).toHaveCount(4);
   await page.getByRole('button', { name: 'Idea 研究问题与构想', exact: true }).click();
   await expect(page.getByRole('heading', { name: '研究问题与构想', exact: true })).toBeVisible();
   await expect(page.locator('.rw-progress-step.running')).toContainText('Idea');
