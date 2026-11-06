@@ -188,10 +188,6 @@
 .lit-collection .lit-library-footer{padding-top:10px;padding-bottom:10px}
 .lit-archive-modal.wide{height:min(620px,calc(100dvh - 40px))}
 .lit-archive-modal .rw-modal-body{display:flex;padding:0;overflow:hidden;flex:1}
-.research-shell .lit-network-toggle{display:inline-flex;align-items:center;gap:7px;flex:none;padding:8px 12px;border:1px solid #e5ddeb;border-radius:8px;background:#faf8fc;color:#9a88aa;font-size:12px;white-space:nowrap;transition:background .15s,border-color .15s,color .15s}
-.research-shell .lit-network-toggle:hover{background:#f3edf9;border-color:#cdb9e2;color:#81609e}
-.research-shell .lit-network-toggle[aria-pressed=true]{background:#ede3fa;border-color:#b799d6;color:#79529e}
-.research-shell .lit-network-toggle:focus-visible{outline:2px solid #b799d6;outline-offset:2px}
 .lit-source-badge{display:inline-block;padding:1px 5px;margin-right:8px;border-radius:4px;background:#f2ecf8;font-size:9px;color:#9b7cb4}
 .lit-results h3 a{color:inherit;text-decoration:none}.lit-results h3 a:hover{text-decoration:underline}
 .lit-pdf-add-modal{width:min(430px,calc(100vw - 24px))}
@@ -205,4 +201,4 @@
 @media(hover:none){.research-shell .lit-table .lit-pin-button{opacity:1}}
 
 @media(max-width:600px){.lit-reader-zoom .pdf-js-toolbar>span{display:none}.research-shell .lit-reader-header{gap:4px;padding:0 6px}.lit-reader-actions{gap:1px}.lit-reader-zoom .pdf-js-toolbar{padding-right:4px}}
-@media(max-width:520px){.lit-topbar{align-items:flex-start}.lit-global-search{width:auto;padding:0;gap:6px;flex-wrap:wrap}.lit-global-search input{flex-basis:100%!important}.lit-global-search button>span{display:inline}.research-shell .lit-global-search .lit-network-toggle{padding:7px 9px}.lit-query input{flex-basis:100%}.lit-advanced{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.lit-topbar{align-items:flex-start}.lit-global-search{width:auto;padding:0;gap:6px;flex-wrap:wrap}.lit-global-search input{flex-basis:100%!important}.lit-global-search button>span{display:inline}.lit-query input{flex-basis:100%}.lit-advanced{grid-template-columns:repeat(2,minmax(0,1fr))}}

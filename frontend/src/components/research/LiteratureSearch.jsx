@@ -1,14 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Search, Globe } from 'lucide-react';
+import { Search } from 'lucide-react';
 import ResearchModal from './ResearchModal.jsx';
-import useLiteratureAssist from './useLiteratureAssist.js';
 import LiteratureSearchResults from './LiteratureSearchResults.jsx';
 import { request, Field } from './shared.jsx';
 
 const defaults = { rank: '', year_from: '', year_to: '', author: '', type: '', venue_id: '', sort: 'year' };
-export default function LiteratureSearch({ mode, initialQuery = '', initialNetwork = false, onNetworkChange, project, onClose, onAdded, openSession }) {
+export default function LiteratureSearch({ mode, initialQuery = '', project, onClose, onAdded }) {
   const [query, setQuery] = useState(initialQuery);
-  const [network, setNetwork] = useState(initialNetwork);
   const [filters, setFilters] = useState(defaults);
   const [venues, setVenues] = useState([]);
   const [result, setResult] = useState(null);
@@ -17,7 +15,6 @@ export default function LiteratureSearch({ mode, initialQuery = '', initialNetwo
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
   const generation = useRef(0);
-  const assist = useLiteratureAssist(project, 'search');
   const run = async (params, offset = 0) => {
     const version = ++generation.current;
     setBusy(true); setError('');
@@ -29,8 +26,7 @@ export default function LiteratureSearch({ mode, initialQuery = '', initialNetwo
   };
   const search = () => {
     const params = { ...filters, q: query.trim() };
-    setResult(null); setRevision((value) => value + 1); assist.reset(); run(params);
-    if (network) assist.start('关键词：' + query.trim(), { network: true, filters });
+    setResult(null); setRevision((value) => value + 1); run(params);
   };
   useEffect(() => {
     if (mode === 'advanced') request('/venues').then((r) => setVenues(r.venues)).catch((e) => setError(e.message));
@@ -40,8 +36,7 @@ export default function LiteratureSearch({ mode, initialQuery = '', initialNetwo
   return <ResearchModal title={mode === 'advanced' ? '高级检索' : '检索文献'} wide onClose={onClose}>
     <form className="lit-query" onSubmit={(e) => { e.preventDefault(); search(); }}>
       <input autoFocus aria-label="检索关键词" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="标题、作者或主题关键词" />
-      <button type="button" className="lit-network-toggle" aria-pressed={network} disabled={busy || assist.busy || !project} title={network ? '数据库 + 网络检索' : '仅检索数据库'} onClick={() => { setNetwork(!network); onNetworkChange?.(!network); assist.reset(); }}><Globe size={15} />网络检索</button>
-      <button className="rw-primary" disabled={busy || assist.busy || (network && !project)}><Search size={15} />搜索</button>
+      <button className="rw-primary" disabled={busy}><Search size={15} />搜索</button>
     </form>
     {mode === 'advanced' && <>
       <div className="lit-advanced rw-form-grid">
@@ -54,11 +49,9 @@ export default function LiteratureSearch({ mode, initialQuery = '', initialNetwo
       </div>
       <p className="lit-chat-hint">你也可以通过聊天来检索</p>
     </>}
-    {(busy || assist.busy) && <div className="lit-search-progress" role="status"><span>{assist.busy ? '正在查询数据库和网络…' : '正在查询数据库…'}</span>{assist.busy && <button type="button" onClick={assist.stop} disabled={!assist.task?.session_id}>停止联网</button>}</div>}
-    {assist.task?.notice && <p className="rw-warning" role="status">{assist.task.notice}</p>}
-    {assist.task?.status === 'waiting_approval' && <p className="rw-warning">网络检索等待授权。<button onClick={() => openSession(assist.task.session_id)}>查看会话</button></p>}
-    {(error || assist.error) && <p role="alert" className="rw-dialog-error">{error || assist.error}</p>}
-    <LiteratureSearchResults key={revision} result={result} webPapers={network ? assist.task?.output?.papers || [] : []} project={project} sessionId={assist.task?.session_id} onAdded={onAdded} busy={busy || assist.busy} onPage={(offset) => run(searched, offset)} />
+    {busy && <div className="lit-search-progress" role="status">正在查询数据库…</div>}
+    {error && <p role="alert" className="rw-dialog-error">{error}</p>}
+    <LiteratureSearchResults key={revision} result={result} project={project} onAdded={onAdded} busy={busy} onPage={(offset) => run(searched, offset)} />
     {!project && <p className="rw-muted">先创建一个项目，即可保存自选文献。</p>}
   </ResearchModal>;
 }
