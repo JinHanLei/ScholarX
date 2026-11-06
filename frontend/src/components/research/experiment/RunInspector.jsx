@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Play, Square, SlidersHorizontal, NotebookPen } from 'lucide-react';
 import { request } from '../shared.jsx';
 import { label, number, STATUS } from './resultTable.js';
+import RunMonitor from './RunMonitor.jsx';
 
 export default function RunInspector({ projectId, run, versions, onMapping, onReload }) {
   const [detail, setDetail] = useState(null), [note, setNote] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false);
@@ -19,6 +20,7 @@ export default function RunInspector({ projectId, run, versions, onMapping, onRe
   return <section className="experiment-run-inspector" aria-label="运行详情">
     <header><div><span className="experiment-kicker">RUN DETAILS</span><h3>{run.name}</h3></div><button onClick={onMapping} disabled={!Object.keys(run.metrics).length}><SlidersHorizontal size={14} />整理结果表</button></header>
     <p className="experiment-purpose">{run.purpose || '尚未记录本轮修改目的。'}</p>
+    <RunMonitor projectId={projectId} run={run} />
     <dl className="experiment-parameters">{[['版本', run.version_ids.map((id) => `V${versions.find((v) => v.id === id)?.number ?? '?'}`).join(' / ') || '历史 / 未绑定版本'], ['状态', STATUS[run.status] || run.status], ['Seed', run.config.seed], ['开始时间', run.started_at ? new Date(run.started_at).toLocaleString() : '未启动'], ...Object.entries(run.config.hyperparameters || {})].map(([key, value]) => <div key={key}><dt>{key}</dt><dd title={label(value)}>{label(value)}</dd></div>)}</dl>
     <details className="experiment-details"><summary>全部原始指标 · {Object.keys(run.metrics).length} 项</summary><div className="experiment-inline-results">{Object.entries(run.metrics).map(([key, value]) => <span key={key}><small>{key}</small><strong title={String(value)}>{number(value)}</strong></span>)}</div></details>
     {run.error && <p className="experiment-error">{run.error}</p>}

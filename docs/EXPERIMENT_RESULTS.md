@@ -13,6 +13,9 @@ Idea 版本；只切换显示，不创建版本或启动实验。正式执行仍
 原始指标、命令、日志、产物和实验记录。旧 Blueprint 与手动登记入口保留在
 “手动登记”弹窗内。
 
+运行详情现已接入 MLflow 本地训练曲线和资源监控，见
+[实验监控说明](EXPERIMENT_TRACKING.md)。
+
 ## Codex 直接读取与整理
 
 先读取 `GET /api/projects` 确认项目，再读取：
@@ -78,7 +81,7 @@ POST /api/projects/<project_id>/experiments/<run_id>/notes
 - 新增迁移 `008_experiment_result_records.sql`，已有迁移不改。
 - 共享接线涉及 `local_api.py`、`research_schema/bridge.py`、
   `ResearchWorkbench.jsx` 和跨页面测试；结果记录随研究项目导出/恢复。
-- 没有新增依赖；模块代码和样式在 `research/experiment/` 与
+- 结果表本身没有新增依赖；后续 MLflow 接入依赖见实验监控说明。模块代码和样式在 `research/experiment/` 与
   `backend/app/local_experiment_results.py`。
 - 后端覆盖来源校验、并发修订、幂等、真实版本、快照与导出恢复；前端覆盖
   版本筛选、协议隔离、零值、多 seed、记录持久化和窄屏。

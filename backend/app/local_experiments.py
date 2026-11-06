@@ -11,20 +11,28 @@ import threading
 from pathlib import Path
 from .local_git import GitService
 from .local_store import encode, file_hash, inside, now, uid
+from .local_tracking import ExperimentTracking
 
 
 class Experiments:
     def __init__(self, store):
         self.store = store
         self.processes = {}
+        self.threads = {}
         self.cancelled = set()
         self.lock = threading.RLock()
+        self.tracking = ExperimentTracking(store)
         store.execute("UPDATE experiments SET status='interrupted',error='EasyRef 重启，执行已中断；请从此记录派生重试' WHERE status IN ('running','queued')")
+        for row in store.all("SELECT e.* FROM experiments e JOIN experiment_tracking t ON t.id=e.id WHERE e.status='interrupted'"):
+            try: self.tracking.finish(row)
+            except Exception: pass
 
     def close(self):
-        for ident in list(self.processes):
+        for ident in list(self.threads):
             try: self.cancel(ident)
             except (OSError,subprocess.SubprocessError): pass
+        for thread in list(self.threads.values()):
+            if thread is not threading.current_thread(): thread.join(timeout=30)
 
     def get(self, ident):
         return self.store.one('SELECT * FROM experiments WHERE id=?', (ident,), True)
@@ -90,6 +98,7 @@ class Experiments:
             environment={**run['environment'],'git_changes':state['changes'],'captured_at':now()}
             self.store.execute("UPDATE experiments SET status='queued',started_at=?,git_commit=?,git_diff=?,environment_json=? WHERE id=?",(now(),state['commit'],git.diff(),encode(environment),ident))
             thread = threading.Thread(target=self._run,args=(ident,),daemon=True)
+            self.threads[ident] = thread
             thread.start()
         return self.get(ident)
 
@@ -101,6 +110,7 @@ class Experiments:
         log_path = logs / 'output.log'
         self.store.execute('UPDATE experiments SET log_path=? WHERE id=?',(str(log_path),ident))
         process = None
+        capture = None
         try:
             args = run['command'][:]
             executable = args[0].lower()
@@ -120,6 +130,10 @@ class Experiments:
             config_path = logs / 'config.json'
             config_path.write_text(encode(run['config']),encoding='utf-8')
             env = dict(os.environ, EASYREF_RUN_ID=ident,EASYREF_CONFIG=str(config_path),EASYREF_METRICS_PATH=str(metric),PYTHONUNBUFFERED='1')
+            try:
+                capture = self.tracking.prepare(run, env)
+            except Exception as tracking_error:
+                self.tracking.save(run, {'error': str(tracking_error)[:1500]})
             with log_path.open('w',encoding='utf-8') as log:
                 with self.lock:
                     if ident in self.cancelled: raise InterruptedError('实验已取消')
@@ -127,7 +141,13 @@ class Experiments:
                                                start_new_session=os.name!='nt',creationflags=(getattr(subprocess,'CREATE_NO_WINDOW',0)|getattr(subprocess,'CREATE_NEW_PROCESS_GROUP',0)))
                     self.processes[ident] = process
                     self.store.execute("UPDATE experiments SET status='running' WHERE id=?",(ident,))
-                code = process.wait()
+                while True:
+                    if capture: capture.poll(process)
+                    try:
+                        code = process.wait(timeout=self.tracking.interval)
+                        break
+                    except subprocess.TimeoutExpired:
+                        continue
             if ident in self.cancelled: raise InterruptedError('实验已取消')
             if code: raise ValueError('实验进程退出码 ' + str(code))
             metrics = {}
@@ -141,6 +161,11 @@ class Experiments:
         except Exception as exc:
             self.store.execute('UPDATE experiments SET status=?,error=?,finished_at=? WHERE id=?',('cancelled' if isinstance(exc,InterruptedError) else 'failed',str(exc),now(),ident))
         finally:
+            if capture: capture.close()
+            try:
+                self.tracking.finish(self.get(ident))
+            except Exception as tracking_error:
+                self.tracking.save(run, {**self.tracking.record(ident), 'error': str(tracking_error)[:1500]})
             if log_path.exists():
                 self.store.execute('INSERT OR IGNORE INTO experiment_artifacts VALUES(?,?,?,?,?)',(uid(),ident,str(log_path),file_hash(log_path),'log'))
             with self.lock: self.processes.pop(ident,None)
@@ -149,6 +174,8 @@ class Experiments:
                 ResearchSchemaService(self.store).checkpoint(self.get(ident)['project_id'],'experiment.finished')
             except Exception as checkpoint_error:
                 self.store.execute('UPDATE experiments SET error=COALESCE(error,\'\') || ? WHERE id=?',(' Portable checkpoint failed: '+str(checkpoint_error),ident))
+            finally:
+                with self.lock: self.threads.pop(ident, None)
 
     @staticmethod
     def validate_metrics(metrics):

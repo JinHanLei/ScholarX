@@ -8,6 +8,7 @@ backend = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(backend), str(backend / 'tests')]
 from app import create_app
 from experiment_result_fixture import seed_report_project
+from experiment_tracking_fixture import seed_tracking_project
 
 
 if __name__ == '__main__':
@@ -21,4 +22,12 @@ if __name__ == '__main__':
         def fixture():
             return seed_report_project(app)
 
-        app.run(host='127.0.0.1', port=args.port, threaded=True, use_reloader=False)
+        @app.post('/api/testing/experiment-tracking-fixture')
+        def tracking_fixture():
+            return seed_tracking_project(app)
+
+        try:
+            app.run(host='127.0.0.1', port=args.port, threaded=True, use_reloader=False)
+        finally:
+            app.extensions['easyref']['experiments'].close()
+            app.extensions['easyref']['codex'].close()

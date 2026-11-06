@@ -5,6 +5,7 @@ import ResearchModal from '../ResearchModal.jsx';
 import LegacyExperimentTools from './LegacyExperimentTools.jsx';
 import RunInspector from './RunInspector.jsx';
 import ResultMapping from './ResultMapping.jsx';
+import { TrackingBadge } from './RunMonitor.jsx';
 import { canonical, defaultVersion, label, metricId, number, resultGroups, STATUS } from './resultTable.js';
 import './experiment.css';
 
@@ -36,7 +37,7 @@ export default function ExperimentResults(props) {
 
   return <div className="experiment-workspace">
     <section className="experiment-results" aria-label="实验结果表">
-      <header className="experiment-results-heading"><div><span className="experiment-kicker">EXPERIMENT RESULTS</span><h1>实验结果</h1><p>Baseline 与 Ours 的真实结果 · 点击数值查看运行记录</p></div><button onClick={() => setTools(true)}><Plus size={14} />手动登记</button></header>
+      <header className="experiment-results-heading"><div><span className="experiment-kicker">EXPERIMENT RESULTS</span><h1>实验结果</h1><p>Baseline 与 Ours 的真实结果 · 点击数值查看运行记录</p></div><div className="experiment-heading-actions"><TrackingBadge /><button onClick={() => setTools(true)}><Plus size={14} />手动登记</button></div></header>
       <div className="experiment-filters"><label className="experiment-version-select"><span>Ours 版本</span><select aria-label="Ours 版本" value={versionId} onChange={(e) => { setChoice(e.target.value); setSelected(''); }}>{data.versions.map((v) => <option key={v.id} value={v.id}>V{v.number} · {v.document.name} · {STATUS[v.stage] || v.stage}</option>)}<option value="legacy">历史 / 未绑定版本</option></select></label><label><span>数据集</span><select aria-label="结果数据集" value={dataset} onChange={(e) => setDataset(e.target.value)}><option value="">全部数据集</option>{datasets.map(([key, value]) => <option key={key} value={key}>{label(value)}</option>)}</select></label><label className="experiment-test-toggle"><input type="checkbox" checked={includeTest} onChange={(e) => setIncludeTest(e.target.checked)} />显示系统测试数据</label></div>
       {error && <p className="experiment-error" role="alert">{error}</p>}
       {groups.map((group, index) => <div className="experiment-result-group" key={group.key}>
