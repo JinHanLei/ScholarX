@@ -106,3 +106,13 @@
 分支 `codex/literature`，合并顺序：先合入 `77d66b9`，移除唯一共享改动 `ResearchWorkbench.jsx` 中新增检索聊天的接线；再合入本记录所在的模块提交，删除 `LiteratureChatSearch.jsx`、对应样式、恢复方法及专用历史接口，并将高级提示改为普通文字。不删除此前的会话数据。自选列表在窗口重新获得焦点或页面重新显示时刷新，便于显示当前 Codex 对话通过本地 API 收藏的文献。现有 API 的检索和收藏方法见 [LITERATURE_CODEX.md](LITERATURE_CODEX.md)。无需新增聊天界面、迁移或依赖。
 
 验证：前端构建通过；`test_literature_catalog.py`、`test_literature_list.py`、`test_library_ui.py` 共 15 项通过，现有 research-links 单元测试 2 项通过。浏览器确认高级检索的提示为文字、页面没有新增文献聊天栏，截图 `logs/literature-codex-chat-hint.png`。本轮没有再次调用真实 Codex 网络检索，也未向项目新增验收文献；焦点刷新逻辑未单独进行跨窗口自动化验收。5011 服务已重启并加载修正，仍使用独立开发数据和已有主库只读连接。未修改其他工作区，尚未合入或推送 `main`。
+
+## 移除网络检索开关与 Codex 上下文约定
+
+接续 `8261629`，分支 `codex/literature`，先合入 `fadb716`：主检索栏和高级检索移除网络开关，页面搜索仅查询当前数据库及已配置的本机 DBLP 主库，不再创建 Codex 检索会话；结果列表移除网络候选分支。保留数据库收藏和高级检索中的聊天文字提示。网络查找在当前 Codex 对话中执行，调用既有 API 加入自选。
+
+再合入本记录所在的共享规则提交：唯一共享文件 `AGENTS.md` 增加 Literature 对话规则，按需读取 `docs/LITERATURE_CODEX.md`，要求核实当前实例、项目和筛选条件，并按用户范围使用数据库或网络工具。只改当前 worktree 的项目级规则，没有改全局配置。现有对话不能依靠文件改动获得自动热更新；当前对话已明确采用该约定，其他会话须重新读取或在正确目录启动。
+
+核对官方 OpenAI 文档后记录了“项目规则 + 页面 WebMCP 上下文工具”的后续方案。当前尚未注册 `easyref_get_context`，也没有实现页面打开时自动推送上下文；`local_codex.py` 的上下文仅用于应用创建的会话。不能把该方案作为已实现功能。详细设计和依据见 `docs/LITERATURE_CODEX.md`。
+
+验证：前端构建通过，现有前端单元测试 2 项通过；浏览器确认两个检索入口都没有网络开关，`graph neural` 仍返回 DBLP 主库 8,676 篇及本机 1 篇。截图 `logs/literature-database-only.png`。本轮无后端、迁移、依赖变更，未重复运行后端测试、全量浏览器套件或真实 Codex 网络检索。5011 已加载新构建；工作区保持独立，尚未合入或推送 `main`。

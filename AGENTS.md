@@ -1,5 +1,16 @@
 # EasyRef development
 
+## Literature tasks in Codex chat
+
+For EasyRef literature search or collection requests in the current Codex chat,
+read `docs/LITERATURE_CODEX.md`. The app search bar queries its database; network
+literature search belongs in this Codex chat, using available search tools when
+needed unless the user requests local-only search. Verify the active instance,
+project and relevant UI filters before acting; an open page URL alone does not
+identify its project or filters. Preserve those constraints and use the local
+API to collect papers only within the user's requested scope. Do not add an
+embedded chat UI or assume page text automatically changes this chat's rules.
+
 Read `docs/PARALLEL_DEVELOPMENT.md` before editing. This repository uses one Git
 worktree per component, defined in `scripts/components.json`.
 
