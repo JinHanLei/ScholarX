@@ -46,7 +46,7 @@ def download_md5_file(md5_url, md5_file_path):
     session.mount("https://", HTTPAdapter(max_retries=retry_strategy))
 
     try:
-        response = session.get(md5_url, timeout=15, verify=False)
+        response = session.get(md5_url, timeout=15, verify=True)
         response.raise_for_status()
         with open(md5_file_path, "w", encoding="utf-8") as f:
             f.write(response.text.strip())
@@ -115,7 +115,7 @@ def download_dblp_xml():
             print(f"✅ DBLP MD5 未变化 ({official_md5})，跳过 XML 下载和解压。")
             if not os.path.exists(dtd_file_path):
                 print("\n本地 DTD 不存在，补充下载 DBLP DTD...")
-                dtd_response = session.get(dtd_url, timeout=timeout, verify=False)
+                dtd_response = session.get(dtd_url, timeout=timeout, verify=True)
                 dtd_response.raise_for_status()
                 with open(dtd_file_path, "wb") as f:
                     f.write(dtd_response.content)
@@ -144,7 +144,7 @@ def download_dblp_xml():
             stream=True,
             headers=headers,
             timeout=timeout,
-            verify=False
+            verify=True
         )
         response.raise_for_status()
 
@@ -204,7 +204,7 @@ def download_dblp_xml():
 
         # -------------------------- 第五步：下载 DTD --------------------------
         print("\n开始下载 DBLP DTD...")
-        dtd_response = session.get(dtd_url, timeout=timeout, verify=False)
+        dtd_response = session.get(dtd_url, timeout=timeout, verify=True)
         dtd_response.raise_for_status()
         with open(dtd_file_path, "wb") as f:
             f.write(dtd_response.content)

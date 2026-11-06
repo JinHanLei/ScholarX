@@ -2,14 +2,11 @@ import json
 import hashlib
 import os
 import re
-import subprocess
-import sys
 import zipfile
 import csv
 from queue import Empty, Queue
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from decimal import Decimal
 from io import BytesIO
 from io import StringIO
 from pathlib import Path
@@ -22,10 +19,11 @@ from xml.etree import ElementTree
 
 import pandas as pd
 import requests
-from flask import Blueprint, Response, current_app, jsonify, request, send_file, send_from_directory, stream_with_context
+from flask import Response, current_app, jsonify, request, send_file, send_from_directory, stream_with_context
 from werkzeug.datastructures import FileStorage
 
 from .db import execute, executemany, normalize_row, normalize_rows, query
+from .api_routes.common import api, body, normalize_library_rows, normalize_paper_rows, ok
 from .services.agent import run_agent
 from .services.citations import (
     CITATION_FAILED,
@@ -42,12 +40,11 @@ from .services.citations import (
     mark_citation_status,
 )
 from .services.pdf import extract_pdf_metadata, extract_pdf_text, save_pdf, upload_pdf_to_object_store
-from .services.llm import chat_completion, chat_completion_stream, list_available_models, llm_metadata, translate_text_stream
+from .services.llm import chat_completion, chat_completion_stream, llm_metadata, translate_text_stream
 from .services.paper_qa import answer_paper_question, build_answer_messages, prepare_paper_qa_context, select_pdf_evidence, store_pdf_chunks
 from .services.search_provider import search_web
-from .services.skills import install_skill, list_skills, resolve_installed_skills, uninstall_skill
+from .services.skills import resolve_installed_skills
 
-api = Blueprint("api", __name__)
 citation_executor = ThreadPoolExecutor(max_workers=int(os.getenv("CITATION_FETCH_WORKERS", "4")))
 pdf_task_executor = ThreadPoolExecutor(max_workers=int(os.getenv("PDF_TASK_WORKERS", "2")))
 pdf_file_executor = ThreadPoolExecutor(max_workers=int(os.getenv("PDF_FILE_WORKERS", "4")))
@@ -55,37 +52,6 @@ citation_inflight = set()
 citation_inflight_lock = Lock()
 pdf_tasks = {}
 pdf_tasks_lock = Lock()
-
-
-def normalize_library_rows(rows):
-    libraries = normalize_rows(rows)
-    for library in libraries:
-        count = library.get("paper_count", 0)
-        if isinstance(count, Decimal):
-            count = int(count)
-        library["paper_count"] = count or 0
-    return libraries
-
-
-def normalize_paper_rows(rows):
-    papers = normalize_rows(rows)
-    seen = set()
-    unique = []
-    for paper in papers:
-        paper_id = paper.get("id")
-        if paper_id in seen:
-            continue
-        seen.add(paper_id)
-        unique.append(paper)
-    return unique
-
-
-def body():
-    return request.get_json(silent=True) or {}
-
-
-def ok(payload=None, status=200):
-    return jsonify(payload or {}), status
 
 
 def pdf_task_snapshot(task_id):
@@ -202,19 +168,6 @@ def materialize_pdf_uploads(file_storages):
             content_type=file_storage.content_type or "application/pdf",
         ))
     return uploads
-
-
-@api.get("/llm/models")
-def llm_models_route():
-    try:
-        return ok(list_available_models())
-    except Exception as exc:
-        fallback_model = os.getenv("LLM_MODEL", "")
-        return ok({
-            "default_model": fallback_model,
-            "models": [{"id": fallback_model, "name": fallback_model}] if fallback_model else [],
-            "error": str(exc),
-        })
 
 
 def parse_list_value(value):
@@ -746,6 +699,8 @@ def extract_arxiv_id(value):
     patterns = [
         r"arxiv[:\s/]*(\d{4}\.\d{4,5})(?:v\d+)?",
         r"arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,5})(?:v\d+)?",
+        r"arxiv\.org/(?:abs|pdf)/([a-z-]+(?:\.[A-Z]{2})?/\d{7})(?:v\d+)?",
+        r"arxiv[:\s/]*([a-z-]+(?:\.[A-Z]{2})?/\d{7})(?:v\d+)?",
         r"\b(\d{4}\.\d{4,5})(?:v\d+)?\b",
     ]
     for pattern in patterns:
@@ -753,6 +708,83 @@ def extract_arxiv_id(value):
         if match:
             return match.group(1)
     return ""
+
+
+def _arxiv_text(entry, tag, namespace):
+    return re.sub(r"\s+", " ", entry.findtext(f"atom:{tag}", default="", namespaces=namespace) or "").strip()
+
+
+def _arxiv_year(value):
+    match = re.search(r"\b(19|20)\d{2}\b", value or "")
+    return int(match.group(0)) if match else None
+
+
+def _arxiv_links(entry, namespace):
+    links = {}
+    for link in entry.findall("atom:link", namespace):
+        href = (link.attrib.get("href") or "").strip()
+        if not href:
+            continue
+        rel = (link.attrib.get("rel") or "").lower()
+        title = (link.attrib.get("title") or "").lower()
+        link_type = (link.attrib.get("type") or "").lower()
+        if rel == "alternate":
+            links["abs_url"] = href
+        if title == "pdf" or link_type == "application/pdf":
+            links["pdf_url"] = href
+    return links
+
+
+def fetch_arxiv_metadata(arxiv_id):
+    arxiv_id = extract_arxiv_id(arxiv_id)
+    if not arxiv_id:
+        return {}
+    timeout = int(os.getenv("PDF_TITLE_LOOKUP_TIMEOUT_SECONDS", "8"))
+    try:
+        response = requests.get(f"https://export.arxiv.org/api/query?id_list={arxiv_id}", timeout=timeout)
+        response.raise_for_status()
+        root = ElementTree.fromstring(response.text)
+    except (requests.RequestException, ElementTree.ParseError) as exc:
+        return {"arxiv_id": arxiv_id, "attempts": [{"source": "arxiv", "status": "failed", "reason": str(exc)[:180]}]}
+    namespace = {"atom": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
+    entry = root.find("atom:entry", namespace)
+    if entry is None:
+        return {"arxiv_id": arxiv_id, "attempts": [{"source": "arxiv", "status": "success", "title_found": False}]}
+    title = _arxiv_text(entry, "title", namespace)
+    summary = _arxiv_text(entry, "summary", namespace)
+    published = _arxiv_text(entry, "published", namespace)
+    updated = _arxiv_text(entry, "updated", namespace)
+    authors = [
+        _arxiv_text(author, "name", namespace)
+        for author in entry.findall("atom:author", namespace)
+    ]
+    authors = [author for author in authors if author]
+    categories = [
+        (category.attrib.get("term") or "").strip()
+        for category in entry.findall("atom:category", namespace)
+        if (category.attrib.get("term") or "").strip()
+    ]
+    doi = re.sub(r"\s+", " ", entry.findtext("arxiv:doi", default="", namespaces=namespace) or "").strip()
+    links = _arxiv_links(entry, namespace)
+    primary_category = entry.find("arxiv:primary_category", namespace)
+    primary = (primary_category.attrib.get("term") or "").strip() if primary_category is not None else (categories[0] if categories else "")
+    return {
+        "title": clean_pdf_title_candidate(title),
+        "authors": authors,
+        "abstract": summary,
+        "pub_year": _arxiv_year(published) or _arxiv_year(updated),
+        "published": published,
+        "updated": updated,
+        "venue": "arXiv",
+        "primary_category": primary,
+        "categories": categories,
+        "arxiv_id": arxiv_id,
+        "pub_url": links.get("abs_url") or f"https://arxiv.org/abs/{arxiv_id}",
+        "pdf_url": links.get("pdf_url") or f"https://arxiv.org/pdf/{arxiv_id}",
+        "doi_url": f"https://doi.org/{doi}" if doi else "",
+        "source": "arxiv",
+        "attempts": [{"source": "arxiv", "status": "success", "title_found": bool(title)}],
+    }
 
 
 def pdf_identifier_text(original_filename, extracted_text, bibliography=None, metadata=None):
@@ -804,23 +836,13 @@ def fetch_pdf_title_by_doi(doi):
 
 
 def fetch_pdf_title_by_arxiv(arxiv_id):
-    arxiv_id = extract_arxiv_id(arxiv_id)
-    if not arxiv_id:
-        return {}
-    timeout = int(os.getenv("PDF_TITLE_LOOKUP_TIMEOUT_SECONDS", "8"))
-    try:
-        response = requests.get(f"https://export.arxiv.org/api/query?id_list={arxiv_id}", timeout=timeout)
-        response.raise_for_status()
-        root = ElementTree.fromstring(response.text)
-    except (requests.RequestException, ElementTree.ParseError):
-        return {"arxiv_id": arxiv_id, "attempts": [{"source": "arxiv", "status": "failed"}]}
-    namespace = {"atom": "http://www.w3.org/2005/Atom"}
-    entry = root.find("atom:entry", namespace)
-    title = entry.findtext("atom:title", default="", namespaces=namespace) if entry is not None else ""
-    title = re.sub(r"\s+", " ", title).strip()
-    if plausible_pdf_title(title):
-        return {"title": clean_pdf_title_candidate(title), "source": "arxiv", "arxiv_id": arxiv_id, "attempts": [{"source": "arxiv", "status": "success", "title_found": True}]}
-    return {"arxiv_id": arxiv_id, "attempts": [{"source": "arxiv", "status": "success", "title_found": False}]}
+    result = fetch_arxiv_metadata(arxiv_id)
+    if plausible_pdf_title(result.get("title")):
+        return result
+    return {
+        "arxiv_id": result.get("arxiv_id") or extract_arxiv_id(arxiv_id),
+        "attempts": result.get("attempts") or [{"source": "arxiv", "status": "success", "title_found": False}],
+    }
 
 
 def fetch_pdf_identifier_title(original_filename, extracted_text, bibliography=None, metadata=None):
@@ -911,7 +933,86 @@ def find_matching_paper_for_pdf(original_filename, extracted_text, preferred_tit
     return None
 
 
-def create_uploaded_paper(original_filename, title):
+def find_paper_by_arxiv_id(arxiv_id):
+    arxiv_id = extract_arxiv_id(arxiv_id)
+    if not arxiv_id:
+        return None
+    return normalize_row(query(
+        """
+        SELECT id, title, dblp_key, pub_year, pub_url, doi_url
+        FROM papers
+        WHERE dblp_key=%s
+           OR pub_url ILIKE %s
+           OR doi_url ILIKE %s
+           OR (
+                jsonb_typeof(paper_details) = 'object'
+                AND (
+                    paper_details->>'arxiv_id' = %s
+                    OR paper_details->>'eprint' = %s
+                )
+           )
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (
+            f"arxiv/{arxiv_id}",
+            f"%arxiv.org/abs/{arxiv_id}%",
+            f"%arxiv.org/abs/{arxiv_id}%",
+            arxiv_id,
+            arxiv_id,
+        ),
+        one=True,
+    ))
+
+
+def arxiv_paper_details(metadata, original_filename=None):
+    if not metadata or metadata.get("source") != "arxiv":
+        return {"source": "pdf_upload", "original_filename": original_filename}
+    details = {
+        "source": "arxiv",
+        "journal": "arXiv",
+        "arxiv_id": metadata.get("arxiv_id"),
+        "eprint": metadata.get("arxiv_id"),
+        "primary_category": metadata.get("primary_category"),
+        "arxiv_categories": metadata.get("categories") or [],
+        "published": metadata.get("published"),
+        "updated": metadata.get("updated"),
+        "pdf_url": metadata.get("pdf_url"),
+        "original_filename": original_filename,
+    }
+    return {key: value for key, value in details.items() if value not in (None, "", [])}
+
+
+def create_uploaded_paper(original_filename, title, identifier_metadata=None):
+    identifier_metadata = identifier_metadata or {}
+    if identifier_metadata.get("source") == "arxiv" and identifier_metadata.get("arxiv_id"):
+        details = arxiv_paper_details(identifier_metadata, original_filename)
+        return execute(
+            """
+            INSERT INTO papers (dblp_key, title, authors, pub_year, pub_url, doi_url, paper_details)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (dblp_key) DO UPDATE
+            SET title=COALESCE(NULLIF(EXCLUDED.title, ''), papers.title),
+                authors=CASE
+                    WHEN jsonb_array_length(COALESCE(EXCLUDED.authors, '[]'::jsonb)) > 0 THEN EXCLUDED.authors
+                    ELSE papers.authors
+                END,
+                pub_year=COALESCE(EXCLUDED.pub_year, papers.pub_year),
+                pub_url=COALESCE(NULLIF(EXCLUDED.pub_url, ''), papers.pub_url),
+                doi_url=COALESCE(NULLIF(EXCLUDED.doi_url, ''), papers.doi_url),
+                paper_details=COALESCE(papers.paper_details, '{}'::jsonb) || EXCLUDED.paper_details
+            RETURNING id
+            """,
+            (
+                f"arxiv/{identifier_metadata['arxiv_id']}",
+                identifier_metadata.get("title") or title,
+                identifier_metadata.get("authors") or [],
+                identifier_metadata.get("pub_year"),
+                identifier_metadata.get("pub_url") or "",
+                identifier_metadata.get("doi_url") or "",
+                details,
+            ),
+        )
     return execute(
         """
         INSERT INTO papers (dblp_key, title, authors, paper_details)
@@ -923,6 +1024,39 @@ def create_uploaded_paper(original_filename, title):
             title,
             [],
             {"source": "pdf_upload", "original_filename": original_filename},
+        ),
+    )
+
+
+def apply_identifier_metadata_to_paper(paper_id, identifier_metadata):
+    if not paper_id or not identifier_metadata or identifier_metadata.get("source") != "arxiv":
+        return
+    details = arxiv_paper_details(identifier_metadata)
+    execute(
+        """
+        UPDATE papers
+        SET title=COALESCE(NULLIF(title, ''), NULLIF(%s, ''), title),
+            authors=CASE
+                WHEN jsonb_array_length(COALESCE(authors, '[]'::jsonb)) = 0
+                 AND jsonb_array_length(COALESCE(%s::jsonb, '[]'::jsonb)) > 0 THEN %s::jsonb
+                ELSE authors
+            END,
+            pub_year=COALESCE(pub_year, %s),
+            pub_url=COALESCE(NULLIF(pub_url, ''), %s),
+            doi_url=COALESCE(NULLIF(doi_url, ''), %s),
+            paper_details=COALESCE(paper_details, '{}'::jsonb) || %s,
+            updated_at=CURRENT_TIMESTAMP
+        WHERE id=%s
+        """,
+        (
+            identifier_metadata.get("title") or "",
+            identifier_metadata.get("authors") or [],
+            identifier_metadata.get("authors") or [],
+            identifier_metadata.get("pub_year"),
+            identifier_metadata.get("pub_url") or "",
+            identifier_metadata.get("doi_url") or "",
+            details,
+            paper_id,
         ),
     )
 
@@ -1036,16 +1170,18 @@ def persist_pdf_upload(file_storage, library_id=None, paper_id=None, create_pape
     if create_paper and not paper_id:
         started = perf_counter()
         progress("matching", "匹配论文")
-        matched_paper = find_matching_paper_for_pdf(
-            original_filename,
-            text,
-            [
-                extracted_title,
-                identifier_metadata.get("title"),
-                pdf_bibliography.get("title"),
-                pdf_metadata.get("title"),
-            ],
-        )
+        matched_paper = find_paper_by_arxiv_id(identifier_metadata.get("arxiv_id")) if identifier_metadata.get("source") == "arxiv" else None
+        if not matched_paper:
+            matched_paper = find_matching_paper_for_pdf(
+                original_filename,
+                text,
+                [
+                    extracted_title,
+                    identifier_metadata.get("title"),
+                    pdf_bibliography.get("title"),
+                    pdf_metadata.get("title"),
+                ],
+            )
         progress("matching", f"匹配完成 {int((perf_counter() - started) * 1000)}ms")
         if matched_paper:
             paper_id = matched_paper["id"]
@@ -1053,7 +1189,7 @@ def persist_pdf_upload(file_storage, library_id=None, paper_id=None, create_pape
             association_mode = "matched"
         else:
             title = extracted_title
-            paper_id = create_uploaded_paper(original_filename, title)
+            paper_id = create_uploaded_paper(original_filename, title, identifier_metadata)
             association_mode = "created"
 
     try:
@@ -1069,6 +1205,7 @@ def persist_pdf_upload(file_storage, library_id=None, paper_id=None, create_pape
 
     if paper_id:
         progress("associating", "关联论文")
+        apply_identifier_metadata_to_paper(paper_id, identifier_metadata)
         upload_id = execute(
             """
             INSERT INTO paper_uploads (paper_id, library_id, filename, original_filename, file_path, extracted_text, file_hash)
@@ -1080,10 +1217,12 @@ def persist_pdf_upload(file_storage, library_id=None, paper_id=None, create_pape
         store_pdf_chunks(paper_id, upload_id, text)
         execute(
             """
-            INSERT INTO paper_detail (paper_id, pdf_text_preview, bib, pdf_url, metadata_json)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO paper_detail (paper_id, abstract, abstract_source, pdf_text_preview, bib, pdf_url, metadata_json)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (paper_id) DO UPDATE
-            SET pdf_text_preview=COALESCE(NULLIF(EXCLUDED.pdf_text_preview, ''), paper_detail.pdf_text_preview),
+            SET abstract=COALESCE(paper_detail.abstract, NULLIF(EXCLUDED.abstract, '')),
+                abstract_source=COALESCE(paper_detail.abstract_source, NULLIF(EXCLUDED.abstract_source, '')),
+                pdf_text_preview=COALESCE(NULLIF(EXCLUDED.pdf_text_preview, ''), paper_detail.pdf_text_preview),
                 bib=COALESCE(NULLIF(EXCLUDED.bib, ''), paper_detail.bib),
                 pdf_url=EXCLUDED.pdf_url,
                 metadata_json=COALESCE(paper_detail.metadata_json, '{}'::jsonb) || EXCLUDED.metadata_json,
@@ -1091,6 +1230,8 @@ def persist_pdf_upload(file_storage, library_id=None, paper_id=None, create_pape
             """,
             (
                 paper_id,
+                identifier_metadata.get("abstract") or "",
+                identifier_metadata.get("source") if identifier_metadata.get("abstract") else "",
                 text[:12000],
                 pdf_bibliography.get("bibtex") or "",
                 pdf_url,
@@ -1312,203 +1453,6 @@ def paper_export_rows(library_id, filters):
 def handle_error(exc):
     code = getattr(exc, "code", 500)
     return jsonify({"error": str(exc)}), code
-
-
-@api.get("/stats")
-def stats():
-    paper_estimate = query(
-        "SELECT GREATEST(reltuples::bigint, 0) AS count FROM pg_class WHERE oid='public.papers'::regclass",
-        one=True,
-    )
-    metadata = normalize_row(query("SELECT value_json, updated_at FROM app_metadata WHERE key='dblp_last_inserted_at'", one=True)) or {}
-    value_json = metadata.get("value_json") or {}
-    dblp_inserted_at = value_json.get("inserted_at") or metadata.get("updated_at")
-    if not dblp_inserted_at:
-        dblp_inserted_at = query(
-            "SELECT MAX(created_at) AS inserted_at FROM papers WHERE dblp_key NOT LIKE 'upload/%%'",
-            one=True,
-        )["inserted_at"]
-    result = {
-        "papers": paper_estimate["count"] if paper_estimate else 0,
-        "libraries": query("SELECT COUNT(*) AS count FROM paper_libraries", one=True)["count"],
-        "venues": query("SELECT COUNT(*) AS count FROM venues", one=True)["count"],
-        "dblp_inserted_at": dblp_inserted_at,
-    }
-    return ok(result)
-
-
-@api.get("/venues/suggest")
-def suggest_venues():
-    term = (request.args.get("q") or "").strip()
-    if len(term) < 1:
-        return ok({"venues": []})
-    like = f"%{term}%"
-    prefix = f"{term}%"
-    rows = query(
-        """
-        SELECT id, venue_abbr, venue_name, dblp_key, dblp_detail_key, rank
-        FROM (
-            SELECT
-                v.id,
-                NULLIF(v.venue_abbr, '') AS venue_abbr,
-                NULLIF(v.venue_name, '') AS venue_name,
-                NULLIF(v.dblp_key, '') AS dblp_key,
-                NULLIF(v.dblp_detail_key, '') AS dblp_detail_key,
-                best.rank,
-                CASE
-                    WHEN v.venue_abbr ILIKE %s THEN 0
-                    WHEN v.venue_name ILIKE %s THEN 1
-                    WHEN v.dblp_key ILIKE %s OR v.dblp_detail_key ILIKE %s THEN 2
-                    ELSE 3
-                END AS match_order
-            FROM venues v
-            LEFT JOIN LATERAL (
-                SELECT rank
-                FROM category_venue_rankings cvr
-                WHERE cvr.venue_id = v.id
-                ORDER BY rank
-                LIMIT 1
-            ) best ON true
-            WHERE v.main_venue_id IS NULL
-              AND NULLIF(TRIM(v.venue_name), '') IS NOT NULL
-              AND (
-                   v.venue_abbr ILIKE %s
-                OR v.venue_name ILIKE %s
-                OR v.dblp_key ILIKE %s
-                OR v.dblp_detail_key ILIKE %s
-              )
-        ) matched
-        ORDER BY match_order, COALESCE(venue_abbr, venue_name, dblp_detail_key)
-        LIMIT 24
-        """,
-        (prefix, prefix, prefix, prefix, like, like, like, like),
-    )
-    venues = normalize_rows(rows)
-    venues.sort(key=lambda item: (
-        0 if (item.get("venue_abbr") or "").lower().startswith(term.lower()) else 1,
-        item.get("venue_abbr") or item.get("venue_name") or "",
-    ))
-    return ok({"venues": venues[:12]})
-
-
-@api.get("/auth/email-status")
-def auth_email_status():
-    email = (request.args.get("email") or "").strip().lower()
-    if not email:
-        return ok({"error": "missing email"}, 400)
-    row = query(
-        """
-        SELECT id, email_confirmed_at
-        FROM auth.users
-        WHERE lower(email)=%s
-        LIMIT 1
-        """,
-        (email,),
-        one=True,
-    )
-    return ok({
-        "exists": bool(row),
-        "confirmed": bool(row and row.get("email_confirmed_at")),
-    })
-
-
-@api.get("/users/suggest")
-def suggest_users():
-    term = (request.args.get("q") or "").strip().lower()
-    if not term:
-        return ok({"users": []})
-    like = f"{term}%"
-    try:
-        rows = query(
-            """
-            SELECT id::text AS id, email, email_confirmed_at IS NOT NULL AS confirmed
-            FROM auth.users
-            WHERE lower(email) LIKE %s
-            ORDER BY email
-            LIMIT 12
-            """,
-            (like,),
-        )
-    except Exception:
-        rows = []
-    return ok({"users": normalize_rows(rows)})
-
-
-@api.post("/libraries/intent/parse")
-def parse_library_intent():
-    payload = body()
-    text = (payload.get("text") or "").strip()
-    if not text:
-        return ok({"error": "missing text"}, 400)
-    fallback = re.sub(r"[，。,.!?！？]", " ", text).strip()[:120]
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "你是 ScholarX 的论文库创建助手。"
-                "把用户的自然语言研究需求转换成适合 DBLP 英文论文标题全文检索的布尔检索式。"
-                "检索式支持英文短语双引号、AND、OR、NOT、括号、减号排除和 :* 前缀匹配。"
-                "先识别研究对象、任务/方法、影响因素等核心概念；不同核心概念用 AND 连接，"
-                "同一概念的常见论文标题表达用 OR 分组，每组通常给出 2 到 4 个准确表达。"
-                "必须保留用户明确提到的关键语义，不要压缩成 stock、news 这类过于宽泛的孤立词；"
-                "也不要加入用户未要求的研究方向。年份、CCF 等级、会议或期刊属于独立筛选条件，"
-                "不要放入 keyword。"
-                "示例：用户想找研究新闻传播度、新闻热度、点赞评论量对股价预测影响的论文，"
-                "keyword 可为 (\"stock price prediction\" OR \"stock forecasting\") AND "
-                "(\"information diffusion\" OR \"news diffusion\" OR \"news popularity\" OR \"social media engagement\")。"
-                "还要生成一个用于结果过少时扩大召回的 broad_keyword：只保留研究对象和任务的核心约束，"
-                "将可能不出现在标题里的细粒度指标改成该领域常见上位词；宽松式仍需与用户意图相关。"
-                "同时用中文生成 relevance_criteria，完整描述后续根据 title 和 abstract 判断相关性的标准。"
-                "只返回 JSON，格式：{\"keyword\":\"...\",\"broad_keyword\":\"...\","
-                "\"relevance_criteria\":\"...\"}。"
-                "不要返回解释，不要返回 markdown。"
-            ),
-        },
-        {"role": "user", "content": text},
-    ]
-    try:
-        settings = payload.get("llm") or {}
-        result = chat_completion(
-            messages,
-            model=settings.get("model"),
-            base_url=settings.get("base_url"),
-            api_key=settings.get("api_key"),
-            protocol=settings.get("protocol"),
-            temperature=0.1,
-        )
-        content = (result.get("content") or "").strip()
-        match = re.search(r"\{.*\}", content, flags=re.S)
-        parsed = json.loads(match.group(0) if match else content)
-        keyword = str(parsed.get("keyword") or "").strip()
-        broad_keyword = str(parsed.get("broad_keyword") or "").strip()
-        relevance_criteria = str(parsed.get("relevance_criteria") or text).strip()
-    except Exception:
-        keyword = fallback
-        broad_keyword = fallback
-        relevance_criteria = text
-    return ok({
-        "keyword": keyword or fallback,
-        "broad_keyword": broad_keyword or keyword or fallback,
-        "relevance_criteria": relevance_criteria,
-    })
-
-
-@api.post("/libraries/intent/preview")
-def preview_library_intent():
-    payload = body()
-    filters = parse_filters(payload)
-    broad_keyword = str(payload.get("broad_keyword") or "").strip()
-    threshold = max(1, int(os.getenv("SMART_SEARCH_MIN_RESULTS", "10")))
-    strict_count = paper_search_count(filters)
-    broad_count = strict_count
-    if strict_count < threshold and broad_keyword:
-        broad_count = paper_search_count({**filters, "keyword": broad_keyword})
-    return ok({
-        "strict_count": strict_count,
-        "broad_count": broad_count,
-        "threshold": threshold,
-        "use_broad_search": strict_count < threshold and bool(broad_keyword),
-    })
 
 
 @api.get("/libraries")
@@ -2015,9 +1959,11 @@ def check_pdf_for_library_paper(library_id, paper_id):
         "pdf": {
             "title": best.get("title") or (candidates[0] if candidates else ""),
             "candidates": candidates[:6],
-            "authors": bibliography.get("authors"),
-            "pub_year": bibliography.get("pub_year"),
-            "url": bibliography.get("url"),
+            "authors": identifier_metadata.get("authors") or bibliography.get("authors"),
+            "pub_year": identifier_metadata.get("pub_year") or bibliography.get("pub_year"),
+            "url": identifier_metadata.get("pub_url") or bibliography.get("url"),
+            "venue": identifier_metadata.get("venue") or "",
+            "arxiv_id": identifier_metadata.get("arxiv_id") or "",
             "identifier_metadata": identifier_metadata,
             "has_bibtex": bool(bibliography.get("bibtex")),
             "text_preview": text[:1200],
@@ -2253,7 +2199,18 @@ def restore_library_file(library_id, file_id):
 @api.patch("/libraries/<int:library_id>/papers/<int:paper_id>")
 def update_library_paper(library_id, paper_id):
     payload = body()
-    paper_in_library = None
+    paper_in_library = normalize_row(query(
+        """
+        SELECT p.id, p.dblp_key
+        FROM papers p
+        JOIN library_papers lp ON lp.paper_id=p.id
+        WHERE lp.library_id=%s AND p.id=%s
+        """,
+        (library_id, paper_id),
+        one=True,
+    ))
+    if not paper_in_library:
+        return ok({"error": "paper not found in library"}, 404)
     updates = {}
     if "tags" in payload:
         updates["tags_json"] = payload["tags"]
@@ -2263,53 +2220,62 @@ def update_library_paper(library_id, paper_id):
         updates["status"] = payload["status"]
     if "columns" in payload:
         updates["user_columns_json"] = payload["columns"]
-    title_updated = False
-    next_title = clean_pdf_title_candidate(payload.get("title")) if "title" in payload else ""
+
+    paper_updates = {}
+    manual_metadata = {}
+    now = datetime.utcnow().isoformat()
+
     if "title" in payload:
-        paper_in_library = normalize_row(query(
-            """
-            SELECT p.id, p.dblp_key
-            FROM papers p
-            JOIN library_papers lp ON lp.paper_id=p.id
-            WHERE lp.library_id=%s AND p.id=%s
-            """,
-            (library_id, paper_id),
-            one=True,
-        ))
-        if not paper_in_library:
-            return ok({"error": "paper not found in library"}, 404)
-        if not str(paper_in_library.get("dblp_key") or "").startswith("upload/"):
-            return ok({"error": "only uploaded unmatched papers can be renamed"}, 400)
+        next_title = clean_pdf_title_candidate(payload.get("title"))
         if not (2 <= len(next_title) <= 300):
             return ok({"error": "invalid title"}, 400)
-        execute("UPDATE papers SET title=%s WHERE id=%s", (next_title, paper_id))
+        paper_updates["title"] = next_title
+        manual_metadata["manual_title"] = next_title
+        manual_metadata["manual_title_updated_at"] = now
+    if "authors" in payload:
+        raw_authors = payload.get("authors") or ""
+        if isinstance(raw_authors, list):
+            authors = [str(author).strip() for author in raw_authors if str(author).strip()]
+        else:
+            authors = [item.strip() for item in re.split(r"\s*;\s*|\n+", str(raw_authors)) if item.strip()]
+        paper_updates["authors"] = authors
+        manual_metadata["manual_authors"] = authors
+        manual_metadata["manual_authors_updated_at"] = now
+    if "pub_year" in payload:
+        raw_year = str(payload.get("pub_year") or "").strip()
+        if raw_year:
+            try:
+                year = int(raw_year)
+            except ValueError:
+                return ok({"error": "invalid year"}, 400)
+            if year < 1800 or year > datetime.utcnow().year + 2:
+                return ok({"error": "invalid year"}, 400)
+            paper_updates["pub_year"] = year
+        else:
+            paper_updates["pub_year"] = None
+        manual_metadata["manual_pub_year_updated_at"] = now
+    if "pub_url" in payload:
+        paper_updates["pub_url"] = str(payload.get("pub_url") or "").strip()[:1000]
+        manual_metadata["manual_pub_url_updated_at"] = now
+    if "doi_url" in payload:
+        paper_updates["doi_url"] = str(payload.get("doi_url") or "").strip()[:1000]
+        manual_metadata["manual_doi_url_updated_at"] = now
+    if "venue" in payload:
+        manual_venue = str(payload.get("venue") or "").strip()[:500]
+        manual_metadata["manual_venue"] = manual_venue
+        manual_metadata["manual_venue_updated_at"] = now
+
+    if paper_updates:
+        set_clause = ", ".join(f"{key}=%s" for key in paper_updates)
         execute(
-            """
-            INSERT INTO paper_detail (paper_id, metadata_json)
-            VALUES (%s, %s)
-            ON CONFLICT (paper_id) DO UPDATE
-            SET metadata_json=COALESCE(paper_detail.metadata_json, '{}'::jsonb) || EXCLUDED.metadata_json,
-                updated_at=CURRENT_TIMESTAMP
-            """,
-            (paper_id, {"manual_title": next_title, "manual_title_updated_at": datetime.utcnow().isoformat()}),
+            f"UPDATE papers SET {set_clause} WHERE id=%s",
+            tuple(paper_updates.values()) + (paper_id,),
         )
-        title_updated = True
+
     abstract_updated = False
     next_abstract = str(payload.get("abstract") or "").strip() if "abstract" in payload else ""
     if "abstract" in payload:
-        if paper_in_library is None:
-            paper_in_library = normalize_row(query(
-                """
-                SELECT p.id, p.dblp_key
-                FROM papers p
-                JOIN library_papers lp ON lp.paper_id=p.id
-                WHERE lp.library_id=%s AND p.id=%s
-                """,
-                (library_id, paper_id),
-                one=True,
-            ))
-        if not paper_in_library:
-            return ok({"error": "paper not found in library"}, 404)
+        manual_metadata["manual_abstract_updated_at"] = now
         execute(
             """
             INSERT INTO paper_detail (paper_id, abstract, abstract_source, metadata_json)
@@ -2324,10 +2290,21 @@ def update_library_paper(library_id, paper_id):
                 paper_id,
                 next_abstract,
                 "manual" if next_abstract else "",
-                {"manual_abstract_updated_at": datetime.utcnow().isoformat()},
+                manual_metadata,
             ),
         )
         abstract_updated = True
+    elif manual_metadata:
+        execute(
+            """
+            INSERT INTO paper_detail (paper_id, metadata_json)
+            VALUES (%s, %s)
+            ON CONFLICT (paper_id) DO UPDATE
+            SET metadata_json=COALESCE(paper_detail.metadata_json, '{}'::jsonb) || EXCLUDED.metadata_json,
+                updated_at=CURRENT_TIMESTAMP
+            """,
+            (paper_id, manual_metadata),
+        )
     folder = payload.get("folder") if "folder" in payload else None
     if "tags" in payload and "folder" not in payload:
         folder = auto_folder_for_tags(library_id, payload["tags"])
@@ -2347,12 +2324,82 @@ def update_library_paper(library_id, paper_id):
             f"UPDATE library_papers SET {set_clause} WHERE library_id=%s AND paper_id=%s",
             tuple(values) + (library_id, paper_id),
         )
+    updated_paper = normalize_row(query(
+        paper_select_sql("JOIN library_papers lp ON lp.paper_id=p.id WHERE lp.library_id=%s AND p.id=%s", include_library=True),
+        (library_id, paper_id),
+        one=True,
+    ))
     return ok({
         "updated": True,
-        "title": next_title if title_updated else None,
+        "paper": updated_paper,
         "abstract": next_abstract if abstract_updated else None,
         "abstract_source": "manual" if abstract_updated and next_abstract else "",
     })
+
+
+@api.delete("/libraries/<int:library_id>/papers/<int:paper_id>/pdf")
+def unlink_library_paper_pdf(library_id, paper_id):
+    paper_in_library = normalize_row(query(
+        """
+        SELECT p.id, p.title
+        FROM papers p
+        JOIN library_papers lp ON lp.paper_id=p.id
+        WHERE lp.library_id=%s AND p.id=%s
+        """,
+        (library_id, paper_id),
+        one=True,
+    ))
+    if not paper_in_library:
+        return ok({"error": "paper not found in library"}, 404)
+    execute(
+        """
+        UPDATE papers
+        SET dblp_key=NULL,
+            ref_venue=NULL,
+            authors='[]'::jsonb,
+            pub_year=NULL,
+            pub_url=NULL,
+            doi_url=NULL,
+            paper_details='{}'::jsonb
+        WHERE id=%s
+        """,
+        (paper_id,),
+    )
+    execute(
+        """
+        INSERT INTO paper_detail (paper_id, abstract, abstract_source, detail_snippet, bib, metadata_json)
+        VALUES (%s, NULL, '', NULL, NULL, %s)
+        ON CONFLICT (paper_id) DO UPDATE
+        SET abstract=NULL,
+            abstract_source='',
+            detail_snippet=NULL,
+            bib=NULL,
+            metadata_json=(
+                COALESCE(paper_detail.metadata_json, '{}'::jsonb)
+                - 'manual_venue'
+                - 'manual_authors'
+                - 'manual_title'
+                - 'manual_pub_year_updated_at'
+                - 'manual_pub_url_updated_at'
+                - 'manual_doi_url_updated_at'
+                - 'manual_venue_updated_at'
+                - 'manual_authors_updated_at'
+                - 'manual_abstract_updated_at'
+            ) || EXCLUDED.metadata_json,
+            updated_at=CURRENT_TIMESTAMP
+        """,
+        (paper_id, {
+            "index_unlinked_at": datetime.utcnow().isoformat(),
+            "index_unlinked": True,
+            "manual_title": paper_in_library.get("title") or "",
+        }),
+    )
+    updated_paper = normalize_row(query(
+        paper_select_sql("JOIN library_papers lp ON lp.paper_id=p.id WHERE lp.library_id=%s AND p.id=%s", include_library=True),
+        (library_id, paper_id),
+        one=True,
+    ))
+    return ok({"updated": True, "paper": updated_paper})
 
 
 @api.post("/papers/<int:paper_id>/details")
@@ -2466,26 +2513,27 @@ def paper_classification_text(paper):
 
 
 def classify_smart_search_candidate(paper, criteria, natural_query, settings):
-    abstract = str(paper.get("abstract") or "").strip()
-    if not abstract:
-        return {
-            "paper_id": paper["id"],
-            "matched": False,
-            "confidence": 0,
-            "reason": "缺少 abstract，无法可靠判断",
-            "evidence": "",
-            "source_used": "none",
-        }
+    payload = paper_classification_text(paper)
+    source = payload.get("source") or "none"
+    content = str(payload.get("content") or "").strip()
+    title = paper.get("title") or ""
+    venue = paper.get("venue_abbr") or paper.get("venue_name") or ""
+    year = paper.get("pub_year") or ""
+    title_only = not content
     prompt = f"""判断这篇论文是否符合用户的研究需求。
 用户原始需求：{natural_query}
 判定标准：{criteria}
 
 要求：
-- 基于标题和 abstract 判断论文核心研究问题，不要因个别关键词命中就判为相关。
-- 只返回 JSON 对象：{{"matched":true,"confidence":0.0,"reason":"一句话理由","evidence":"摘要中的关键证据"}}
+- 如果有摘要/正文片段/网页片段，优先基于这些证据判断论文核心研究问题，不要因个别关键词命中就判为相关。
+- 如果缺少摘要，只基于标题、年份、venue 判断：只有明显不符合才 exclude；标题看起来可能相关但证据不足时返回 review，让用户后续人工挑选。
+- 只返回 JSON 对象：{{"decision":"include|review|exclude","confidence":0.0,"reason":"一句话理由","evidence":"标题或摘要中的关键证据"}}
 
-标题：{paper.get('title') or ''}
-Abstract：{abstract[:6000]}
+标题：{title}
+年份：{year}
+Venue：{venue}
+证据来源：{source}
+证据内容：{content[:6000] if content else "无摘要或正文片段，仅可依据标题做保守判断。"}
 """
     try:
         response = chat_completion(
@@ -2500,22 +2548,33 @@ Abstract：{abstract[:6000]}
         if not isinstance(parsed, dict):
             raise ValueError("LLM did not return a JSON object")
         confidence = max(0.0, min(float(parsed.get("confidence") or 0), 1.0))
+        decision = str(parsed.get("decision") or "").lower().strip()
+        if not decision:
+            decision = "include" if parsed.get("matched") is True else "exclude"
+        if title_only:
+            matched = decision == "include" and confidence >= 0.75
+            needs_review = decision != "exclude" or confidence < 0.65
+        else:
+            matched = decision == "include" and confidence >= 0.55
+            needs_review = decision == "review"
         return {
             "paper_id": paper["id"],
-            "matched": parsed.get("matched") is True and confidence >= 0.55,
+            "matched": matched,
+            "needs_review": needs_review and not matched,
             "confidence": confidence,
             "reason": str(parsed.get("reason") or "")[:500],
             "evidence": str(parsed.get("evidence") or "")[:1000],
-            "source_used": "abstract",
+            "source_used": "title_only" if title_only else source,
         }
     except Exception as exc:
         return {
             "paper_id": paper["id"],
             "matched": False,
+            "needs_review": bool(title_only),
             "confidence": 0,
-            "reason": f"判定失败：{str(exc)[:300]}",
-            "evidence": "",
-            "source_used": "abstract",
+            "reason": f"判定失败：{str(exc)[:300]}" if not title_only else "缺少摘要且自动判定失败，保留给用户人工确认",
+            "evidence": title if title_only else "",
+            "source_used": "title_only" if title_only else source,
         }
 
 
@@ -2523,22 +2582,26 @@ def seed_smart_search_library(library_id, filters, llm_settings=None):
     threshold = max(1, int(os.getenv("SMART_SEARCH_MIN_RESULTS", "10")))
     strict_filters = {**filters}
     strict_count = paper_search_count(strict_filters)
-    if strict_count >= threshold:
-        rows = paper_search_rows(strict_filters)
-        added = add_papers_to_library(library_id, [row["id"] for row in rows])
-        execute("UPDATE paper_libraries SET last_synced_at=CURRENT_TIMESTAMP WHERE id=%s", (library_id,))
-        return {"strategy": "strict", "strict_count": strict_count, "candidates": strict_count, "analyzed": 0, "added": added}
-
     broad_keyword = str(filters.get("broad_keyword") or "").strip()
-    if not broad_keyword:
-        return {"strategy": "strict", "strict_count": strict_count, "candidates": strict_count, "analyzed": 0, "added": 0}
+    use_broad_search = strict_count < threshold and bool(broad_keyword)
+    candidate_keyword = broad_keyword if use_broad_search else str(filters.get("keyword") or "").strip()
+    candidate_limit = max(1, int(os.getenv("SMART_SEARCH_MAX_CANDIDATES", "120")))
+    candidate_filters = {**filters, "keyword": candidate_keyword}
+    candidates = paper_search_rows(candidate_filters, limit=candidate_limit, include_details=True)
+    if not candidates:
+        execute("UPDATE paper_libraries SET last_synced_at=CURRENT_TIMESTAMP WHERE id=%s", (library_id,))
+        return {
+            "strategy": "broad_abstract_filter" if use_broad_search else "abstract_filter",
+            "strict_count": strict_count,
+            "candidates": 0,
+            "analyzed": 0,
+            "matched": 0,
+            "added": 0,
+        }
     settings = llm_settings or {}
     if not (settings.get("base_url") or os.getenv("LLM_BASE_URL")) or not (settings.get("api_key") or os.getenv("LLM_API_KEY")):
-        raise ValueError("宽松检索后的摘要筛选需要先配置 LLM")
+        raise ValueError("自然语言检索的摘要筛选需要先配置 LLM")
 
-    candidate_limit = max(1, int(os.getenv("SMART_SEARCH_MAX_CANDIDATES", "120")))
-    broad_filters = {**filters, "keyword": broad_keyword}
-    candidates = paper_search_rows(broad_filters, limit=candidate_limit, include_details=True)
     criteria = str(filters.get("relevance_criteria") or filters.get("natural_query") or "").strip()
     natural_query = str(filters.get("natural_query") or criteria).strip()
     task_id = execute(
@@ -2547,7 +2610,7 @@ def seed_smart_search_library(library_id, filters, llm_settings=None):
         VALUES (%s, 'smart_search_classification', 'running', %s)
         RETURNING id
         """,
-        (library_id, {"strict_count": strict_count, "broad_keyword": broad_keyword, "candidate_count": len(candidates), "criteria": criteria}),
+        (library_id, {"strict_count": strict_count, "candidate_keyword": candidate_keyword, "candidate_count": len(candidates), "criteria": criteria}),
     )
     workers = max(1, min(int(os.getenv("SMART_SEARCH_WORKERS", "8")), len(candidates) or 1))
     with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -2556,13 +2619,22 @@ def seed_smart_search_library(library_id, filters, llm_settings=None):
             candidates,
         ))
     matched_ids = [item["paper_id"] for item in results if item.get("matched")]
-    added = add_papers_to_library(library_id, matched_ids)
+    review_ids = [item["paper_id"] for item in results if item.get("needs_review")]
+    add_ids = list(dict.fromkeys([*matched_ids, *review_ids]))
+    added = add_papers_to_library(library_id, add_ids)
+    review_tagged = 0
+    if review_ids:
+        ensure_library_tag(library_id, "待确认")
+        review_tagged = apply_tag_to_papers(library_id, review_ids, "待确认")
     summary = {
-        "strategy": "broad_abstract_filter",
+        "strategy": "broad_abstract_filter" if use_broad_search else "abstract_filter",
         "strict_count": strict_count,
         "candidates": len(candidates),
         "analyzed": len(candidates),
         "matched": len(matched_ids),
+        "needs_review": len(review_ids),
+        "excluded": len(candidates) - len(add_ids),
+        "review_tagged": review_tagged,
         "added": added,
         "items": results,
     }
@@ -2877,6 +2949,7 @@ def build_review_markdown(library_id, topic, papers, user_key="", llm_settings=N
     paper_payload = [
         {
             "id": paper["id"],
+            "citation_marker": f"[[ref:p{paper['id']}]]",
             "title": paper.get("title"),
             "year": paper.get("pub_year"),
             "venue": paper.get("venue_abbr") or paper.get("venue_name"),
@@ -2902,7 +2975,7 @@ def build_review_markdown(library_id, topic, papers, user_key="", llm_settings=N
 强制要求：
 - 输出 Markdown 正文，不要包裹代码块。
 - 如果用户写作偏好为空，不要自行发明额外风格禁忌。
-- 每个关键论断尽量用 [P论文id] 标注证据来源。
+- 每个关键论断尽量使用论文材料里提供的 citation_marker 标注证据来源，不要自行编造引用标记。
 - 如果证据不足，要明确写“证据不足”。
 - 结构至少包含：引言、主题分类、代表性方法、比较分析、局限与未来方向。
 
@@ -2969,172 +3042,6 @@ def review_intent(message):
         return None
     topic = re.sub(r"[“”\"'？?。,.，]+", " ", match.group(1)).strip()
     return topic or "论文"
-
-
-@api.post("/libraries/<int:library_id>/classify")
-def classify_library_papers_route(library_id):
-    payload = body()
-    try:
-        result = classify_papers_for_library(
-            library_id,
-            payload.get("label") or "",
-            criteria=payload.get("criteria") or "",
-            folder=payload.get("folder") or "",
-            limit=payload.get("limit") or int(os.getenv("CLASSIFY_MAX_PAPERS", "120")),
-            llm_settings=payload.get("llm") or {},
-        )
-    except Exception as exc:
-        return ok({"error": str(exc)}, 500)
-    return ok(result)
-
-
-@api.post("/libraries/<int:library_id>/folders/copy-tag")
-def copy_tag_to_folder_route(library_id):
-    payload = body()
-    try:
-        return ok(copy_tagged_papers_to_folder(library_id, payload.get("tag"), payload.get("folder") or payload.get("tag")))
-    except Exception as exc:
-        return ok({"error": str(exc)}, 400)
-
-
-@api.get("/libraries/<int:library_id>/files")
-def library_files_route(library_id):
-    return ok({"files": load_library_files(library_id)})
-
-
-@api.post("/libraries/<int:library_id>/files")
-def create_library_file_route(library_id):
-    payload = body()
-    file_type = payload.get("type") or "markdown"
-    default_name = "untitled" if file_type == "folder" else "untitled.md"
-    return ok({"file": upsert_library_file(
-        library_id,
-        payload.get("name") or default_name,
-        file_type,
-        payload.get("content") or "",
-        payload.get("parent_id"),
-        payload.get("metadata") or {},
-    )})
-
-
-@api.patch("/libraries/<int:library_id>/files/<int:file_id>")
-def update_library_file_route(library_id, file_id):
-    payload = body()
-    assignments = []
-    values = []
-    for source, column in (("name", "name"), ("type", "type"), ("content", "content_text"), ("metadata", "metadata_json"), ("parent_id", "parent_id")):
-        if source in payload:
-            assignments.append(f"{column}=%s")
-            values.append(safe_file_name(payload[source]) if source == "name" else payload[source])
-    if not assignments:
-        return ok({"updated": False})
-    assignments.append("updated_at=CURRENT_TIMESTAMP")
-    row = normalize_row(query(
-        f"""
-        UPDATE library_files
-        SET {", ".join(assignments)}
-        WHERE library_id=%s AND id=%s AND status IS DISTINCT FROM 'trashed'
-        RETURNING id, library_id, parent_id, name, type, content_text, storage_url, metadata_json, status, deleted_at, created_at, updated_at
-        """,
-        tuple(values + [library_id, file_id]),
-        one=True,
-    ))
-    return ok({"file": row})
-
-
-@api.delete("/libraries/<int:library_id>/files/<int:file_id>")
-def delete_library_file_route(library_id, file_id):
-    deleted = mark_file_tree_trashed(library_id, file_id)
-    return ok({"deleted": bool(deleted), "count": deleted, "id": file_id})
-
-
-@api.get("/libraries/<int:library_id>/files/export")
-def export_library_files_zip_route(library_id):
-    folder_id = request.args.get("folder_id")
-    folder_id = int(folder_id) if str(folder_id or "").isdigit() else None
-    files = load_file_descendants(library_id, folder_id)
-    by_id = {file_row["id"]: file_row for file_row in files}
-    stream = BytesIO()
-    with zipfile.ZipFile(stream, "w", zipfile.ZIP_DEFLATED) as archive:
-        added = False
-        for file_row in files:
-            if file_row.get("type") == "folder":
-                continue
-            archive.writestr(file_export_path(file_row, by_id), file_row.get("content_text") or "")
-            added = True
-        if not added:
-            archive.writestr("empty.txt", "")
-    stream.seek(0)
-    name = "scholarx-files.zip"
-    if folder_id and folder_id in by_id:
-        name = f"{safe_file_name(by_id[folder_id].get('name'))}.zip"
-    return send_file(stream, mimetype="application/zip", as_attachment=True, download_name=name)
-
-
-@api.get("/libraries/<int:library_id>/files/<int:file_id>/export")
-def export_library_file_route(library_id, file_id):
-    row = normalize_row(query(
-        "SELECT name, type, content_text FROM library_files WHERE library_id=%s AND id=%s AND status IS DISTINCT FROM 'trashed'",
-        (library_id, file_id),
-        one=True,
-    ))
-    if not row:
-        return ok({"error": "file not found"}, 404)
-    mimetype = "text/markdown; charset=utf-8" if row.get("type") == "markdown" else "text/plain; charset=utf-8"
-    return Response(
-        row.get("content_text") or "",
-        mimetype=mimetype,
-        headers={"Content-Disposition": f"attachment; filename=\"{safe_file_name(row.get('name'))}\""},
-    )
-
-
-@api.post("/libraries/<int:library_id>/write-review")
-def write_review_route(library_id):
-    payload = body()
-    try:
-        result = create_review_document(
-            library_id,
-            payload.get("topic") or payload.get("title") or "论文",
-            source_folder=payload.get("folder") or "",
-            source_tag=payload.get("tag") or "",
-            user_key=payload.get("user_key") or "",
-            llm_settings=payload.get("llm") or {},
-        )
-    except Exception as exc:
-        return ok({"error": str(exc)}, 500)
-    return ok(result)
-
-
-@api.get("/writing-preferences")
-def get_writing_preferences_route():
-    user_key = (request.args.get("user_key") or "").strip()
-    if not user_key:
-        return ok({"preferences": {"style_rules_json": {}, "citation_style": ""}})
-    return ok({"preferences": writing_preferences(user_key)})
-
-
-@api.put("/writing-preferences")
-def update_writing_preferences_route():
-    payload = body()
-    user_key = (payload.get("user_key") or "").strip()
-    if not user_key:
-        return ok({"error": "missing user_key"}, 400)
-    style_rules = payload.get("style_rules_json") or {}
-    citation_style = payload.get("citation_style") or ""
-    row = normalize_row(query(
-        """
-        INSERT INTO user_writing_preferences (user_key, style_rules_json, citation_style)
-        VALUES (%s, %s, %s)
-        ON CONFLICT (user_key) DO UPDATE
-        SET style_rules_json=EXCLUDED.style_rules_json,
-            citation_style=EXCLUDED.citation_style,
-            updated_at=CURRENT_TIMESTAMP
-        RETURNING style_rules_json, citation_style, created_at, updated_at
-        """,
-        (user_key, style_rules, citation_style),
-        one=True,
-    ))
-    return ok({"preferences": row})
 
 
 @api.post("/uploads/pdf")
@@ -3518,40 +3425,7 @@ def chat_stream():
     return Response(generate(), content_type="text/event-stream; charset=utf-8")
 
 
-@api.get("/skills")
-def skills():
-    return ok({"skills": list_skills()})
-
-
-@api.post("/skills/<skill_id>/install")
-def install_skill_route(skill_id):
-    skill = install_skill(skill_id)
-    if not skill:
-        return ok({"error": "skill not found"}, 404)
-    return ok({"skill": skill})
-
-
-@api.post("/skills/<skill_id>/uninstall")
-def uninstall_skill_route(skill_id):
-    uninstall_skill(skill_id)
-    return ok({"removed": True})
-
-
-@api.post("/admin/data-init")
-def run_data_init():
-    payload = body()
-    command = [sys.executable, "/app/scripts/init_data.py"]
-    if payload.get("skip_download"):
-        command.append("--skip-download")
-    if payload.get("skip_dblp_insert"):
-        command.append("--skip-dblp-insert")
-    if payload.get("skip_ccf"):
-        command.append("--skip-ccf")
-    if payload.get("dblp_dir"):
-        command.extend(["--dblp-dir", payload["dblp_dir"]])
-    if payload.get("ccf_csv"):
-        command.extend(["--ccf-csv", payload["ccf_csv"]])
-
-    started = datetime.utcnow().isoformat()
-    proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    return ok({"pid": proc.pid, "started_at": started, "command": command})
+from .api_routes import discovery as _discovery_routes  # noqa: E402,F401
+from .api_routes import documents as _document_routes  # noqa: E402,F401
+from .api_routes import intent as _intent_routes  # noqa: E402,F401
+from .api_routes import system as _system_routes  # noqa: E402,F401

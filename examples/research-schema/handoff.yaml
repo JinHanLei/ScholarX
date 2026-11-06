@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0.0",
+  "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+  "active_branch": "unknown",
+  "current_stage": "Experiment",
+  "active_tasks": [],
+  "completed_tasks": [],
+  "pending_tasks": [
+    "e91a86a1-0281-4533-a110-5bae9f015331"
+  ],
+  "blocked_tasks": [],
+  "last_checkpoint": "2026-11-03T08:11:05.300122+00:00",
+  "current_blueprint": "c7586673-c6db-4c37-9557-562b0dfe41aa",
+  "current_experiments": [
+    "2721ed11-0d4c-412b-966e-e3afc0b763fe"
+  ],
+  "current_paper": "ddd33222-ebca-45d1-b292-54fa2d1ab0a5",
+  "open_review_issues": [
+    "93f3c7ca-1101-44cd-8e55-52ff9b82ee1a"
+  ],
+  "important_decisions": [],
+  "environment_requirements": [],
+  "missing_dependencies": [],
+  "suggested_next_actions": [
+    "Check inputs and existing outputs before executing"
+  ],
+  "required_approvals": [
+    "e91a86a1-0281-4533-a110-5bae9f015331"
+  ],
+  "updated_at": "2026-11-03T08:11:05.300138+00:00"
+}

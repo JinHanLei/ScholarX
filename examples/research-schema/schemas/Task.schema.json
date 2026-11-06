@@ -1,0 +1,295 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:easyref:schema:Task:1.0.0",
+  "type": "object",
+  "required": [
+    "id",
+    "project_id",
+    "type",
+    "title",
+    "created_at",
+    "updated_at",
+    "revision",
+    "status",
+    "validation_status",
+    "approval_status",
+    "location",
+    "provenance",
+    "related_objects",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "type": {
+      "const": "Task"
+    },
+    "title": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "revision": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "status": {
+      "enum": [
+        "pending",
+        "in_progress",
+        "blocked",
+        "interrupted",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "validation_status": {
+      "enum": [
+        "unknown",
+        "unverified",
+        "needs_confirmation",
+        "verified",
+        "rejected",
+        "stale"
+      ]
+    },
+    "approval_status": {
+      "enum": [
+        "not_required",
+        "required",
+        "pending",
+        "approved",
+        "rejected"
+      ]
+    },
+    "location": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "kind",
+        "actor",
+        "sources"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "fact",
+            "inference",
+            "hypothesis"
+          ]
+        },
+        "actor": {
+          "type": "string"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "related_objects": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+      },
+      "uniqueItems": true
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "objective",
+        "stage",
+        "dependencies",
+        "required_inputs",
+        "expected_outputs",
+        "assigned_skill",
+        "execution_context",
+        "blocking_reasons",
+        "last_completed_step",
+        "next_action",
+        "approval_requirement",
+        "checkpoint",
+        "verification"
+      ],
+      "properties": {
+        "objective": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "required_inputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "expected_outputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "assigned_skill": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "execution_context": {
+          "type": "object"
+        },
+        "blocking_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "last_completed_step": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "next_action": {
+          "type": "string"
+        },
+        "approval_requirement": {
+          "enum": [
+            "required",
+            "not_required"
+          ]
+        },
+        "checkpoint": {
+          "type": "object",
+          "required": [
+            "completed_steps",
+            "written_files",
+            "successful_commands",
+            "processes",
+            "reusable_outputs",
+            "git_changes",
+            "preflight_checks"
+          ],
+          "properties": {
+            "completed_steps": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "written_files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "successful_commands": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "processes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "reusable_outputs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "preflight_checks": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          }
+        },
+        "verification": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "passed",
+              "reviewer",
+              "evidence"
+            ],
+            "properties": {
+              "passed": {
+                "type": "boolean"
+              },
+              "reviewer": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "uniqueItems": true
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "extensions": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true
+}

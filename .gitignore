@@ -24,3 +24,9 @@ dblp/
 *.pem
 *.log
 *.tmp
+TODO.md
+.venv/
+.easyref/
+test-results/
+frontend/playwright-report/
+!examples/research-schema/run.log

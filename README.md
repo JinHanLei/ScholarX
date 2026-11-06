@@ -1,4 +1,32 @@
-# ScholarX
+# EasyRef
+
+EasyRef 默认提供本地科研工作台：**Literature → Idea → Experiment → Paper → Review**，共用 Research Project、Codex 会话和证据关联。采用 React/Vite + Flask + SQLite/FTS5 + Git + 本地文件，不要求 Docker、Supabase 或独立 API Key。
+
+## 本地启动（Windows）
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r backend/requirements-local.txt
+npm --prefix frontend ci
+npm --prefix frontend run build
+.\.venv\Scripts\python.exe backend/run_local.py
+```
+
+打开 **http://127.0.0.1:5000**。也可以运行 `powershell -ExecutionPolicy Bypass -File scripts/start-local.ps1`。先安装 Git 和 Codex CLI 并执行 `codex login`；只有调用 Assistant 时需要 Codex，其他核心数据功能可离线使用。开发时另开终端运行 `npm --prefix frontend run dev`，访问 `http://127.0.0.1:5180`。
+
+默认数据保存在项目根目录 `.easyref/`；可以用 `--data-dir D:/EasyRefData` 指定独立目录。LaTeX 源码、大纲、版本与 PDF 阅读可直接使用；PDF 编译自动探测本机 TeX Live/MiKTeX，以及 Codex 自带的 Tectonic；也可通过 `EASYREF_LATEX_BIN` 指定可执行文件。
+
+完整架构、数据库迁移、API、数据备份、验收结果及明确限制见 [本地工作台交付说明](docs/LOCAL_WORKBENCH.md)。自动化测试：
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest backend/tests -q
+# 真实 Codex 调用（会使用已登录账号，创建独立 TEST DATA 项目）
+.\.venv\Scripts\python.exe backend/scripts/smoke_codex.py --review
+```
+
+## 旧部署说明（兼容保留）
+
+以下是原有 Supabase 部署与功能文档。仅需继续运行旧部署时设置 `EASYREF_STORAGE=supabase`，并在前端构建时设置 `VITE_EASYREF_LEGACY=true`；其依赖仍见 `backend/requirements.txt`。本地模式不加载这些云端 SDK 或 API-Key Agent。原有数据不会被自动删除或覆盖。
 
 [![简体中文](https://img.shields.io/badge/简体中文-README-green)](README.md)
 [![English](https://img.shields.io/badge/English-README-blue)](README_en.md)

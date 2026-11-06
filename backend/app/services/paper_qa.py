@@ -1,6 +1,6 @@
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from math import log, sqrt
+from math import isfinite, log, sqrt
 import json
 import os
 import re
@@ -60,6 +60,55 @@ STOP_WORDS = {
     "请",
     "这篇",
 }
+
+FAST_PATH_SIMPLE_MARKERS = (
+    "总结",
+    "概括",
+    "介绍",
+    "摘要",
+    "创新点",
+    "贡献",
+    "方法",
+    "实验",
+    "数据集",
+    "结论",
+    "局限",
+    "不足",
+    "是什么",
+    "讲了什么",
+    "summarize",
+    "summary",
+    "abstract",
+    "contribution",
+    "method",
+    "experiment",
+    "dataset",
+    "limitation",
+    "what is",
+)
+
+FAST_PATH_COMPLEX_MARKERS = (
+    "文献综述",
+    "综述",
+    "survey",
+    "related work",
+    "research proposal",
+    "proposal",
+    "写一篇",
+    "写篇",
+    "论文草稿",
+    "ppt",
+    "slides",
+    "presentation",
+    "画",
+    "图片",
+    "图像",
+    "架构图",
+    "流程图",
+    "思维导图",
+    "图表",
+    "可视化",
+)
 
 def tokenize(text):
     lowered = (text or "").lower()
@@ -136,7 +185,8 @@ def build_paper_refs(papers):
             {
                 "paper_id": paper.get("id"),
                 "ref": f"P{index}",
-                "title": paper.get("title") or f"Paper {index}",
+                "ref_id": f"p{paper.get('id')}",
+                "title": paper.get("title") or "未命名论文",
                 "languages": languages,
                 "primary_language": languages[0],
                 "pdf_url": paper.get("pdf_url"),
@@ -199,7 +249,9 @@ def _load_chunks(upload_rows):
         query(
             f"""
             SELECT pc.id, pc.paper_id, pc.upload_id, pc.chunk_no, pc.language, pc.text,
-                   pc.embedding_model, pc.embedding_json, p.title
+                   pc.embedding_model, pc.embedding_json, pc.embedding_dim,
+                   (pc.embedding IS NOT NULL) AS has_embedding,
+                   p.title
             FROM paper_chunks pc
             JOIN papers p ON p.id = pc.paper_id
             WHERE pc.upload_id IN ({placeholders})
@@ -225,6 +277,26 @@ def _llm_configured(llm_settings=None):
     return bool(
         (settings.get("base_url") or os.getenv("LLM_BASE_URL"))
         and (settings.get("api_key") or os.getenv("LLM_API_KEY"))
+    )
+
+
+def should_use_fast_path(question, paper_refs, skills=None):
+    fast_path_mode = os.getenv("PAPER_QA_FAST_PATH", "true").lower()
+    if fast_path_mode in {"0", "false", "no", "off"}:
+        return False
+    if skills:
+        return False
+    text = SPACE_RE.sub(" ", str(question or "").lower()).strip()
+    if not text:
+        return False
+    if any(marker in text for marker in FAST_PATH_COMPLEX_MARKERS):
+        return False
+    if fast_path_mode in {"aggressive", "force"}:
+        return len(text) <= int(os.getenv("PAPER_QA_FAST_PATH_MAX_CHARS", "260"))
+    if len(paper_refs or []) <= 1 and len(text) <= int(os.getenv("PAPER_QA_FAST_PATH_SINGLE_MAX_CHARS", "220")):
+        return True
+    return len(text) <= int(os.getenv("PAPER_QA_FAST_PATH_SIMPLE_MAX_CHARS", "120")) and any(
+        marker in text for marker in FAST_PATH_SIMPLE_MARKERS
     )
 
 
@@ -620,6 +692,91 @@ def _embed_texts(texts):
     return create_embeddings(texts)
 
 
+def _vector_literal(values):
+    cleaned = []
+    for value in values or []:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return ""
+        if not isfinite(number):
+            return ""
+        cleaned.append(f"{number:.8g}")
+    return f"[{','.join(cleaned)}]" if cleaned else ""
+
+
+def _same_embedding_model(left, right):
+    return not left or not right or str(left) == str(right)
+
+
+def _backfill_chunk_vectors(chunks, model, stats=None):
+    updates = []
+    for chunk in chunks:
+        embedding = chunk.get("embedding_json")
+        if not embedding or chunk.get("has_embedding") or not chunk.get("id"):
+            continue
+        if not _same_embedding_model(chunk.get("embedding_model"), model):
+            continue
+        literal = _vector_literal(embedding)
+        if literal:
+            updates.append((literal, len(embedding), chunk["id"]))
+            chunk["has_embedding"] = True
+            chunk["embedding_dim"] = len(embedding)
+    if not updates:
+        return 0
+    executemany(
+        "UPDATE paper_chunks SET embedding=%s::vector, embedding_dim=%s WHERE id=%s",
+        updates,
+    )
+    if stats is not None:
+        stats["embedding_vector_backfilled"] = len(updates)
+    return len(updates)
+
+
+def _pgvector_retrieve(query_embedding, model, chunks, top_k=12, stats=None):
+    literal = _vector_literal(query_embedding)
+    if not literal:
+        return []
+    candidate_ids = [
+        int(chunk["id"])
+        for chunk in chunks
+        if chunk.get("id")
+        and chunk.get("has_embedding")
+        and int(chunk.get("embedding_dim") or 0) == len(query_embedding)
+        and _same_embedding_model(chunk.get("embedding_model"), model)
+    ]
+    if not candidate_ids:
+        return []
+    placeholders = ",".join(["%s"] * len(candidate_ids))
+    params = [literal, *candidate_ids, len(query_embedding), model, literal, top_k]
+    rows = query(
+        f"""
+        SELECT id, 1 - (embedding <=> %s::vector) AS score
+        FROM paper_chunks
+        WHERE id IN ({placeholders})
+          AND embedding IS NOT NULL
+          AND embedding_dim=%s
+          AND (embedding_model=%s OR embedding_model IS NULL)
+        ORDER BY embedding <=> %s::vector
+        LIMIT %s
+        """,
+        tuple(params),
+    )
+    by_id = {int(chunk["id"]): chunk for chunk in chunks if chunk.get("id")}
+    results = []
+    for row in rows:
+        chunk = by_id.get(int(row.get("id")))
+        if not chunk:
+            continue
+        score = float(row.get("score") or 0)
+        if score > 0:
+            results.append({**chunk, "score": score, "method": "embedding"})
+    if stats is not None:
+        stats["embedding_vector_candidates"] = len(candidate_ids)
+        stats["embedding_vector_results"] = len(results)
+    return results
+
+
 def embedding_retrieve(question, plan, chunks, top_k=12, stats=None):
     started = perf_counter()
     if os.getenv("PAPER_QA_ENABLE_EMBEDDING", "true").lower() not in {"1", "true", "yes"}:
@@ -649,20 +806,39 @@ def embedding_retrieve(question, plan, chunks, top_k=12, stats=None):
             updates = []
             for chunk, embedding in zip(missing, batch["embeddings"]):
                 if embedding and chunk.get("id"):
-                    updates.append((embedding, batch["model"], chunk["id"]))
+                    literal = _vector_literal(embedding)
+                    updates.append((
+                        embedding,
+                        literal or None,
+                        literal or None,
+                        len(embedding),
+                        batch["model"],
+                        chunk["id"],
+                    ))
                     chunk["embedding_json"] = embedding
                     chunk["embedding_model"] = batch["model"]
+                    chunk["embedding_dim"] = len(embedding)
+                    chunk["has_embedding"] = bool(literal)
             if updates:
                 db_started = perf_counter()
                 executemany(
-                    "UPDATE paper_chunks SET embedding_json=%s, embedding_model=%s WHERE id=%s",
+                    """
+                    UPDATE paper_chunks
+                    SET embedding_json=%s,
+                        embedding=CASE WHEN %s IS NULL THEN embedding ELSE %s::vector END,
+                        embedding_dim=%s,
+                        embedding_model=%s
+                    WHERE id=%s
+                    """,
                     updates,
                 )
                 if stats is not None:
                     stats["embedding_db_ms"] = _duration_ms(db_started)
                     stats["embedding_saved_chunks"] = len(updates)
         query_started = perf_counter()
-        query_embedding = _embed_texts([query_text])["embeddings"][0]
+        query_batch = _embed_texts([query_text])
+        query_embedding = query_batch["embeddings"][0]
+        query_model = query_batch["model"]
         if stats is not None:
             stats["embedding_query_api_ms"] = _duration_ms(query_started)
     except LLMRequestError:
@@ -670,6 +846,20 @@ def embedding_retrieve(question, plan, chunks, top_k=12, stats=None):
             stats["embedding_error"] = "llm_request_error"
             stats["embedding_ms"] = _duration_ms(started)
         return []
+    try:
+        vector_db_started = perf_counter()
+        _backfill_chunk_vectors(candidate_chunks, query_model, stats=stats)
+        vector_results = _pgvector_retrieve(query_embedding, query_model, candidate_chunks, top_k=top_k, stats=stats)
+        if vector_results:
+            if stats is not None:
+                stats["embedding_storage"] = "pgvector"
+                stats["embedding_vector_ms"] = _duration_ms(vector_db_started)
+                stats["embedding_results"] = len(vector_results)
+                stats["embedding_ms"] = _duration_ms(started)
+            return vector_results
+    except Exception as exc:
+        if stats is not None:
+            stats["embedding_vector_error"] = str(exc)[:180]
     scored = []
     for chunk in candidate_chunks:
         score = _cosine(query_embedding, chunk.get("embedding_json") or [])
@@ -677,6 +867,7 @@ def embedding_retrieve(question, plan, chunks, top_k=12, stats=None):
             scored.append({**chunk, "score": score, "method": "embedding"})
     results = sorted(scored, key=lambda item: item["score"], reverse=True)[:top_k]
     if stats is not None:
+        stats["embedding_storage"] = "jsonb"
         stats["embedding_results"] = len(results)
         stats["embedding_ms"] = _duration_ms(started)
     return results
@@ -862,10 +1053,10 @@ def _paper_ref_for(paper_refs, paper_id):
     for ref in paper_refs:
         if str(ref.get("paper_id")) == str(paper_id):
             return ref
-    return {"ref": "P?", "title": f"Paper {paper_id}", "paper_id": paper_id}
+    return {"ref": "P?", "title": "引用文献", "paper_id": paper_id}
 
 
-def build_evidence_context(question, papers, upload_rows, llm_settings=None, route_plan=None, initial_trace=None, paper_refs=None):
+def build_evidence_context(question, papers, upload_rows, llm_settings=None, route_plan=None, initial_trace=None, paper_refs=None, fast_path=False):
     total_started = perf_counter()
     emitted_trace = list(initial_trace or [])
 
@@ -909,19 +1100,24 @@ def build_evidence_context(question, papers, upload_rows, llm_settings=None, rou
     if document_mode == "multi_document" and len(retrieval_paper_refs) > 1:
         emit_trace("scheduler", "多文档调度", f"将 {len(retrieval_paper_refs)} 篇论文按文档分组，优先并行检索后再整合证据")
 
-    emit_trace("query_planning", "生成查询", "正在根据问题和论文语言生成检索查询")
     started = perf_counter()
-    plan = plan_question(question, retrieval_paper_refs, llm_settings)
+    if fast_path:
+        emit_trace("query_planning", "快速查询", "跳过 LLM 查询规划，直接使用原问题检索")
+        plan = _minimal_plan(question, retrieval_paper_refs, reason="fast_path")
+    else:
+        emit_trace("query_planning", "生成查询", "正在根据问题和论文语言生成检索查询")
+        plan = plan_question(question, retrieval_paper_refs, llm_settings)
     if route_plan:
         plan = {**plan, "qa_route": route_plan}
     plan_ms = _duration_ms(started)
     emit_trace(
         "query_result",
-        "返回查询",
+        "返回查询" if not fast_path else "快速查询就绪",
         _query_summary(plan) or "未生成额外查询，使用原问题检索",
         duration_ms=plan_ms,
         task_type=plan.get("task_type"),
         query_count=len(plan.get("queries") or []),
+        fast_path=bool(fast_path),
     )
 
     emit_trace("retrieval", "检索证据", "并行执行关键词匹配和 embedding 相似度检索")
@@ -962,47 +1158,62 @@ def build_evidence_context(question, papers, upload_rows, llm_settings=None, rou
             retrieval_detail += f"，写库 {_format_duration(retrieval_stats.get('embedding_db_ms'))}"
     emit_trace("retrieval_result", "返回证据", retrieval_detail, duration_ms=retrieval_ms, stats=retrieval_stats)
 
-    emit_trace("evidence_check", "证据检查", "正在判断证据是否足以回答问题")
-    started = perf_counter()
-    checker = check_evidence(question, plan, evidence[:6], llm_settings)
-    checker_ms = _duration_ms(started)
-    emit_trace(
-        "evidence_check_result",
-        "检查结果",
-        checker.get("reason") or ("证据足够" if checker.get("sufficient") else "证据不足"),
-        duration_ms=checker_ms,
-        sufficient=bool(checker.get("sufficient")),
-    )
-    retries = 0
-    while not checker.get("sufficient") and checker.get("retry_queries") and retries < 2:
-        retries += 1
-        retry_plan = {**plan, "queries": checker["retry_queries"]}
-        emit_trace("query_rewrite", f"重写查询 {retries}", _query_summary(retry_plan) or "根据证据缺口重写查询")
-        plan = {**plan, "queries": (plan.get("queries") or []) + checker["retry_queries"]}
-        emit_trace("retrieval_retry", f"再次检索 {retries}", "使用重写后的查询重新检索证据")
-        retrieval_stats = {}
-        started = perf_counter()
-        evidence = expand_neighbor_chunks(retrieve_hybrid(question, plan, chunks, stats=retrieval_stats), chunks)
-        retrieval_ms = _duration_ms(started)
-        methods = sorted({method for chunk in evidence for method in str(chunk.get("method") or "").split("+") if method})
+    if fast_path:
+        emit_trace("evidence_check", "快速检查", "跳过 LLM 证据检查，使用首轮检索结果")
+        checker = {
+            "sufficient": bool(evidence),
+            "reason": "fast_path_skipped_llm_check",
+            "retry_queries": [],
+        }
         emit_trace(
-            "retrieval_retry_result",
-            f"再次返回证据 {retries}",
-            f"使用 {', '.join(methods) or 'keyword'}，候选证据 {len(evidence)} 个；keyword {_format_duration(retrieval_stats.get('keyword_ms'))}；embedding {_format_duration(retrieval_stats.get('embedding_ms'))}，缺失缓存 {retrieval_stats.get('embedding_missing_chunks', 0)} 个",
-            duration_ms=retrieval_ms,
-            stats=retrieval_stats,
+            "evidence_check_result",
+            "快速检查完成",
+            "已有候选证据" if evidence else "未检索到候选证据",
+            sufficient=bool(evidence),
+            fast_path=True,
         )
-        emit_trace("evidence_recheck", f"重新检查 {retries}", "正在检查新证据是否足够")
+    else:
+        emit_trace("evidence_check", "证据检查", "正在判断证据是否足以回答问题")
         started = perf_counter()
         checker = check_evidence(question, plan, evidence[:6], llm_settings)
         checker_ms = _duration_ms(started)
         emit_trace(
-            "evidence_recheck_result",
-            f"复查结果 {retries}",
-            checker.get("reason") or ("证据足够" if checker.get("sufficient") else "仍然不足"),
+            "evidence_check_result",
+            "检查结果",
+            checker.get("reason") or ("证据足够" if checker.get("sufficient") else "证据不足"),
             duration_ms=checker_ms,
             sufficient=bool(checker.get("sufficient")),
         )
+        retries = 0
+        while not checker.get("sufficient") and checker.get("retry_queries") and retries < 2:
+            retries += 1
+            retry_plan = {**plan, "queries": checker["retry_queries"]}
+            emit_trace("query_rewrite", f"重写查询 {retries}", _query_summary(retry_plan) or "根据证据缺口重写查询")
+            plan = {**plan, "queries": (plan.get("queries") or []) + checker["retry_queries"]}
+            emit_trace("retrieval_retry", f"再次检索 {retries}", "使用重写后的查询重新检索证据")
+            retrieval_stats = {}
+            started = perf_counter()
+            evidence = expand_neighbor_chunks(retrieve_hybrid(question, plan, chunks, stats=retrieval_stats), chunks)
+            retrieval_ms = _duration_ms(started)
+            methods = sorted({method for chunk in evidence for method in str(chunk.get("method") or "").split("+") if method})
+            emit_trace(
+                "retrieval_retry_result",
+                f"再次返回证据 {retries}",
+                f"使用 {', '.join(methods) or 'keyword'}，候选证据 {len(evidence)} 个；keyword {_format_duration(retrieval_stats.get('keyword_ms'))}；embedding {_format_duration(retrieval_stats.get('embedding_ms'))}，缺失缓存 {retrieval_stats.get('embedding_missing_chunks', 0)} 个",
+                duration_ms=retrieval_ms,
+                stats=retrieval_stats,
+            )
+            emit_trace("evidence_recheck", f"重新检查 {retries}", "正在检查新证据是否足够")
+            started = perf_counter()
+            checker = check_evidence(question, plan, evidence[:6], llm_settings)
+            checker_ms = _duration_ms(started)
+            emit_trace(
+                "evidence_recheck_result",
+                f"复查结果 {retries}",
+                checker.get("reason") or ("证据足够" if checker.get("sufficient") else "仍然不足"),
+                duration_ms=checker_ms,
+                sufficient=bool(checker.get("sufficient")),
+            )
 
     started = perf_counter()
     selected = []
@@ -1012,7 +1223,8 @@ def build_evidence_context(question, papers, upload_rows, llm_settings=None, rou
     for index, item in enumerate(evidence[:8], 1):
         ref = _paper_ref_for(paper_refs, item.get("paper_id"))
         evidence_id = f"E{index}"
-        citation = f"[{ref['ref']}:{evidence_id}]"
+        citation_ref_id = f"p{item.get('paper_id')}:c{item.get('chunk_no', 0)}"
+        citation = f"[[ref:{citation_ref_id}]]"
         header = f"{citation} {ref['title']} | chunk {item.get('chunk_no', 0) + 1} | {item.get('method')}\n"
         available = max_context_chars - used_chars - len(header)
         if available <= 0:
@@ -1024,6 +1236,7 @@ def build_evidence_context(question, papers, upload_rows, llm_settings=None, rou
             {
                 "evidence_id": evidence_id,
                 "citation": citation,
+                "ref_id": citation_ref_id,
                 "paper_ref": ref["ref"],
                 "paper_id": item.get("paper_id"),
                 "title": ref["title"],
@@ -1096,13 +1309,19 @@ def prepare_paper_qa_context(question, papers, upload_rows, llm_settings=None, s
     paper_refs = build_paper_refs(papers)
     emit_trace("intent", "意图识别", "正在判断问题类型与文档范围")
     started = perf_counter()
-    route_plan = classify_question_intent(question, paper_refs, settings, skills=skills)
+    fast_path = should_use_fast_path(question, paper_refs, skills=skills)
+    route_plan = (
+        _heuristic_route(question, paper_refs, reason="fast_path")
+        if fast_path
+        else classify_question_intent(question, paper_refs, settings, skills=skills)
+    )
     emit_trace(
         "intent_result",
-        "路由选择",
+        "快速路由" if fast_path else "路由选择",
         f"{route_plan.get('qa_type')} / {route_plan.get('document_mode')}：{route_plan.get('reason') or route_plan.get('strategy')}",
         duration_ms=_duration_ms(started),
         qa_route=route_plan,
+        fast_path=bool(fast_path),
     )
 
     if route_plan.get("qa_type") == "orchestrated_task":
@@ -1133,13 +1352,16 @@ def prepare_paper_qa_context(question, papers, upload_rows, llm_settings=None, s
         route_plan=route_plan,
         initial_trace=emitted_trace,
         paper_refs=paper_refs,
+        fast_path=fast_path,
     )
 
 
 def _answer_system_prompt(qa_route):
     qa_type = (qa_route or {}).get("qa_type") or "in_paper_qa"
     common = """你是 ScholarX 论文研究助手。
-回答涉及具体论文内容时，使用 [P1:E1] 这类引用标记。
+回答涉及具体论文内容时，只能复制 PDF 证据中提供的 [[ref:id]] 引用标记，不要使用 [P1] 或 [P1:E1]。
+不要在面向用户的回答中呈现 paper_id、chunk_id、Paper id 等内部编号；引用只使用 [[ref:id]] 标记，论文称呼使用标题。
+输出必须是合法 Markdown。数学公式必须使用 Markdown/LaTeX 数学分隔符：行内公式写 `$...$`，块级公式写 `$$...$$`；不要输出 `(J(\\theta))` 这种普通括号包裹的 LaTeX。
 如果证据不足，直接说明缺口，并给出下一步检索建议。"""
     if qa_type == "in_paper_qa":
         return common + """
@@ -1169,7 +1391,8 @@ def build_answer_messages(question, papers, evidence_context, skills=None):
     paper_refs = evidence_context.get("paper_refs") or []
     paper_lines = []
     for ref in paper_refs:
-        paper_lines.append(f"{ref['ref']}: {ref['title']} (paper_id={ref['paper_id']})")
+        marker_id = ref.get("ref_id") or f"p{ref['paper_id']}"
+        paper_lines.append(f"{ref['ref']}: {ref['title']} (marker=[[ref:{marker_id}]])")
     skill_lines = []
     for skill in skills or []:
         skill_lines.append(f"- {skill.get('name') or skill.get('id')}: {skill.get('prompt') or skill.get('description') or ''}")

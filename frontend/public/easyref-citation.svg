@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="22" height="20" viewBox="0 0 22 20">
+  <defs>
+    <filter id="glow" x="-35%" y="-45%" width="170%" height="190%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1.25" flood-color="#79a8ff" flood-opacity="0.45"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="1.8" flood-color="#d8ecff" flood-opacity="0.9"/>
+    </filter>
+  </defs>
+  <rect x="1.1" y="1.1" width="19.8" height="17.8" rx="8.9" fill="#fbfdff" stroke="#b7c8df" stroke-width="1.2" filter="url(#glow)"/>
+  <text x="11" y="10.65" fill="none" stroke="#315078" stroke-width="0.85" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="900" text-anchor="middle" dominant-baseline="middle">”</text>
+</svg>

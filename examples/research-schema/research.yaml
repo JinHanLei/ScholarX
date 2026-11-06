@@ -1,0 +1,702 @@
+{
+  "schema_version": "1.0.0",
+  "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+  "objects": [
+    {
+      "id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "type": "ResearchProject",
+      "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "title": "EasyRef portable research example — TEST DATA",
+      "created_at": "2026-11-03T07:59:14.219613+00:00",
+      "updated_at": "2026-11-03T07:59:14.219613+00:00",
+      "revision": "e198e30f-4da8-4ab5-a784-3e20efd6e4a4",
+      "status": "pending",
+      "validation_status": "unverified",
+      "approval_status": "not_required",
+      "location": "research.yaml",
+      "provenance": {
+        "kind": "hypothesis",
+        "actor": "user",
+        "sources": []
+      },
+      "related_objects": [],
+      "data": {
+        "objective": "Verify portable research state using a deterministic, synthetic Python computation.",
+        "environment_requirements": []
+      }
+    },
+    {
+      "id": "9ffe0c1f-eede-467c-a1f3-3ff221fddd4a",
+      "type": "Idea",
+      "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "title": "Deterministic computation",
+      "created_at": "2026-11-03T07:59:14.219648+00:00",
+      "updated_at": "2026-11-03T07:59:14.219648+00:00",
+      "revision": "8c30201b-e4fb-41e9-a9f8-0eeeacbdead9",
+      "status": "pending",
+      "validation_status": "unverified",
+      "approval_status": "not_required",
+      "location": "research.yaml",
+      "provenance": {
+        "kind": "hypothesis",
+        "actor": "user",
+        "sources": []
+      },
+      "related_objects": [],
+      "data": {
+        "statement": "Use the mean of four known integers to verify result provenance."
+      }
+    },
+    {
+      "id": "ee2837d9-9e3a-40d1-a311-c1abf970b93b",
+      "type": "ModelModule",
+      "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "title": "Mean computation",
+      "created_at": "2026-11-03T07:59:14.219669+00:00",
+      "updated_at": "2026-11-03T07:59:14.219669+00:00",
+      "revision": "37ac3b17-bf0b-4014-a748-443a056c4cdb",
+      "status": "pending",
+      "validation_status": "unverified",
+      "approval_status": "not_required",
+      "location": "research.yaml",
+      "provenance": {
+        "kind": "hypothesis",
+        "actor": "user",
+        "sources": []
+      },
+      "related_objects": [],
+      "data": {
+        "purpose": "Compute an auditable arithmetic mean",
+        "code_refs": [
+          "src/baseline.py"
+        ]
+      }
+    },
+    {
+      "id": "c7586673-c6db-4c37-9557-562b0dfe41aa",
+      "type": "ModelBlueprint",
+      "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "title": "Fixture blueprint",
+      "created_at": "2026-11-03T07:59:14.219687+00:00",
+      "updated_at": "2026-11-03T07:59:14.219687+00:00",
+      "revision": "0793e455-3471-43ba-b549-1bd463c3bd39",
+      "status": "pending",
+      "validation_status": "unverified",
+      "approval_status": "not_required",
+      "location": "research.yaml",
+      "provenance": {
+        "kind": "hypothesis",
+        "actor": "user",
+        "sources": []
+      },
+      "related_objects": [],
+      "data": {
+        "design_goal": "Preserve module identity through export",
+        "modules": [
+          "ee2837d9-9e3a-40d1-a311-c1abf970b93b"
+        ],
+        "edges": [],
+        "code_refs": [
+          "src/baseline.py"
+        ],
+        "history": [],
+        "decisions": []
+      }
+    },
+    {
+      "id": "fe21ff43-b306-46e6-866c-9a357ee6632e",
+      "type": "Experiment",
+      "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "title": "Synthetic baseline",
+      "created_at": "2026-11-03T07:59:14.219704+00:00",
+      "updated_at": "2026-11-03T07:59:14.219704+00:00",
+      "revision": "816fdabe-a578-4365-88bc-c539743054af",
+      "status": "pending",
+      "validation_status": "unverified",
+      "approval_status": "not_required",
+      "location": "research.yaml",
+      "provenance": {
+        "kind": "hypothesis",
+        "actor": "user",
+        "sources": []
+      },
+      "related_objects": [],
+      "data": {
+        "objective": "Execute deterministic fixture",
+        "config": {
+          "values": [
+            1,
+            2,
+            3,
+            4
+          ]
+        }
+      }
+    },
+    {
+      "id": "2721ed11-0d4c-412b-966e-e3afc0b763fe",
+      "type": "ExperimentRun",
+      "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "title": "Executed synthetic baseline",
+      "created_at": "2026-11-03T07:59:14.219721+00:00",
+      "updated_at": "2026-11-03T07:59:14.219721+00:00",
+      "revision": "b8753fc1-2d18-4fdd-a043-336389b76727",
+      "status": "completed",
+      "validation_status": "unverified",
+      "approval_status": "not_required",
+      "location": "research.yaml",
+      "provenance": {
+        "kind": "fact",
+        "actor": "Python subprocess",
+        "sources": [
+          "src/baseline.py",
+          "results.json",
+          "run.log"
+        ]
+      },
+      "related_objects": [],
+      "data": {
+        "execution_status": "succeeded",
+        "config": {
+          "values": [
+            1,
+            2,
+            3,
+            4
+          ]
+        },
+        "metrics": {
+          "count": 4,
+          "mean": 2.5
+        },
+        "outputs": [
+          "results.json",
+          "run.log"
+        ]
+      }
+    },
+    {
+      "id": "00e7fb72-1683-4b20-95e1-6f3b5e7ea7a2",
+      "type": "Evidence",
+      "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "title": "Actual metrics file",
+      "created_at": "2026-11-03T07:59:14.219944+00:00",
+      "updated_at": "2026-11-03T07:59:14.219944+00:00",
+      "revision": "50269430-a3b8-4bce-a51b-6cc25de810e3",
+      "status": "pending",
+      "validation_status": "unverified",
+      "approval_status": "not_required",
+      "location": "research.yaml",
+      "provenance": {
+        "kind": "hypothesis",
+        "actor": "user",
+        "sources": []
+      },
+      "related_objects": [],
+      "data": {
+        "source_id": "2721ed11-0d4c-412b-966e-e3afc0b763fe",
+        "locator": "results.json",
+        "sha256": "6e285c68c4bfb5747d77660192a1c319e97aa3c7491d037818042757de3d3cf6"
+      }
+    },
+    {
+      "id": "83b3c6af-a23d-4ade-bc8d-708bcfc30b25",
+      "type": "ResearchClaim",
+      "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "title": "Synthetic arithmetic result",
+      "created_at": "2026-11-03T07:59:14.219969+00:00",
+      "updated_at": "2026-11-03T07:59:14.219969+00:00",
+      "revision": "3ddcbd0e-9cf6-48c7-93b1-4e3aeca47109",
+      "status": "pending",
+      "validation_status": "unverified",
+      "approval_status": "not_required",
+      "location": "research.yaml",
+      "provenance": {
+        "kind": "hypothesis",
+        "actor": "user",
+        "sources": []
+      },
+      "related_objects": [],
+      "data": {
+        "statement": "For fixture values [1,2,3,4], the computed mean is 2.5. This is TEST DATA.",
+        "evidence": [
+          "00e7fb72-1683-4b20-95e1-6f3b5e7ea7a2"
+        ]
+      }
+    },
+    {
+      "id": "93f3c7ca-1101-44cd-8e55-52ff9b82ee1a",
+      "type": "ReviewIssue",
+      "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "title": "No generalization claim",
+      "created_at": "2026-11-03T07:59:14.219985+00:00",
+      "updated_at": "2026-11-03T07:59:14.219985+00:00",
+      "revision": "1da306bb-0916-47b0-97a4-2fc15a6e1826",
+      "status": "pending",
+      "validation_status": "unverified",
+      "approval_status": "not_required",
+      "location": "research.yaml",
+      "provenance": {
+        "kind": "hypothesis",
+        "actor": "user",
+        "sources": []
+      },
+      "related_objects": [],
+      "data": {
+        "problem": "This arithmetic fixture cannot support a scientific model comparison.",
+        "verification": "Keep every output labeled TEST DATA.",
+        "resolution_status": "open"
+      }
+    },
+    {
+      "id": "e91a86a1-0281-4533-a110-5bae9f015331",
+      "type": "Task",
+      "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "title": "Continue synthetic second run",
+      "created_at": "2026-11-03T07:59:14.220004+00:00",
+      "updated_at": "2026-11-03T07:59:14.220004+00:00",
+      "revision": "fbb5b57d-2c0f-4e0f-9048-eb9c757dacc9",
+      "status": "interrupted",
+      "validation_status": "unverified",
+      "approval_status": "not_required",
+      "location": "research.yaml",
+      "provenance": {
+        "kind": "hypothesis",
+        "actor": "user",
+        "sources": []
+      },
+      "related_objects": [],
+      "data": {
+        "objective": "Check partial outputs before planning a second fixture run",
+        "stage": "Experiment",
+        "dependencies": [],
+        "required_inputs": [],
+        "expected_outputs": [],
+        "assigned_skill": null,
+        "execution_context": {},
+        "blocking_reasons": [],
+        "last_completed_step": null,
+        "next_action": "Check inputs and existing outputs before executing",
+        "approval_requirement": "required",
+        "checkpoint": {
+          "completed_steps": [
+            "prepared fixture inputs"
+          ],
+          "written_files": [
+            "src/baseline.py",
+            "results.json"
+          ],
+          "successful_commands": [
+            "python src/baseline.py"
+          ],
+          "processes": [
+            "original Python process exited"
+          ],
+          "reusable_outputs": [
+            "results.json"
+          ],
+          "git_changes": "not a Git repository",
+          "preflight_checks": [
+            "Read prior metrics and verify their hash",
+            "Decide whether a second run is needed"
+          ]
+        },
+        "verification": []
+      }
+    },
+    {
+      "id": "adba6289-372c-4e3d-8486-b794a2f71345",
+      "type": "PaperParagraph",
+      "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "title": "Motivation",
+      "created_at": "2026-11-03T07:59:14.220025+00:00",
+      "updated_at": "2026-11-03T07:59:14.220025+00:00",
+      "revision": "e404e268-6305-415e-9307-76d54b9aa505",
+      "status": "pending",
+      "validation_status": "unverified",
+      "approval_status": "not_required",
+      "location": "research.yaml",
+      "provenance": {
+        "kind": "hypothesis",
+        "actor": "user",
+        "sources": []
+      },
+      "related_objects": [],
+      "data": {
+        "source_path": "paper/main.tex",
+        "anchor": "adba6289-372c-4e3d-8486-b794a2f71345",
+        "claims": []
+      }
+    },
+    {
+      "id": "55cfb8f5-1f08-453e-b9c2-85124a68941d",
+      "type": "ParagraphOutline",
+      "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "title": "Motivation outline",
+      "created_at": "2026-11-03T07:59:14.220042+00:00",
+      "updated_at": "2026-11-03T07:59:14.220042+00:00",
+      "revision": "f5f9b988-0cae-4b05-a81e-bbed2cd544d1",
+      "status": "pending",
+      "validation_status": "unverified",
+      "approval_status": "not_required",
+      "location": "research.yaml",
+      "provenance": {
+        "kind": "hypothesis",
+        "actor": "user",
+        "sources": []
+      },
+      "related_objects": [],
+      "data": {
+        "paragraph_id": "adba6289-372c-4e3d-8486-b794a2f71345",
+        "purpose": "State the fixture scope",
+        "main_claim": "unknown",
+        "evidence": [],
+        "locked": true,
+        "pinned": true
+      }
+    },
+    {
+      "id": "0c3359b8-00dd-457c-884d-a82416c8b825",
+      "type": "PaperParagraph",
+      "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "title": "Method",
+      "created_at": "2026-11-03T07:59:14.220060+00:00",
+      "updated_at": "2026-11-03T07:59:14.220060+00:00",
+      "revision": "b0695eec-2a30-4b8d-bc29-c02958c3cce1",
+      "status": "pending",
+      "validation_status": "unverified",
+      "approval_status": "not_required",
+      "location": "research.yaml",
+      "provenance": {
+        "kind": "hypothesis",
+        "actor": "user",
+        "sources": []
+      },
+      "related_objects": [],
+      "data": {
+        "source_path": "paper/main.tex",
+        "anchor": "0c3359b8-00dd-457c-884d-a82416c8b825",
+        "claims": []
+      }
+    },
+    {
+      "id": "7c4874ba-711a-449b-9368-ef42aa9cec3b",
+      "type": "ParagraphOutline",
+      "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "title": "Method outline",
+      "created_at": "2026-11-03T07:59:14.220077+00:00",
+      "updated_at": "2026-11-03T07:59:14.220077+00:00",
+      "revision": "a7ed5ef7-1792-4018-a239-bd79c21688ec",
+      "status": "pending",
+      "validation_status": "unverified",
+      "approval_status": "not_required",
+      "location": "research.yaml",
+      "provenance": {
+        "kind": "hypothesis",
+        "actor": "user",
+        "sources": []
+      },
+      "related_objects": [],
+      "data": {
+        "paragraph_id": "0c3359b8-00dd-457c-884d-a82416c8b825",
+        "purpose": "Explain the deterministic operation",
+        "main_claim": "unknown",
+        "evidence": [],
+        "locked": true,
+        "pinned": true
+      }
+    },
+    {
+      "id": "1b2a1382-06f5-4385-ad7a-18d475f4926f",
+      "type": "PaperParagraph",
+      "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "title": "Results",
+      "created_at": "2026-11-03T07:59:14.220094+00:00",
+      "updated_at": "2026-11-03T07:59:14.220094+00:00",
+      "revision": "c13e1f71-d771-4727-a5ae-b3a7bf088e12",
+      "status": "pending",
+      "validation_status": "unverified",
+      "approval_status": "not_required",
+      "location": "research.yaml",
+      "provenance": {
+        "kind": "hypothesis",
+        "actor": "user",
+        "sources": []
+      },
+      "related_objects": [],
+      "data": {
+        "source_path": "paper/main.tex",
+        "anchor": "1b2a1382-06f5-4385-ad7a-18d475f4926f",
+        "claims": [
+          "83b3c6af-a23d-4ade-bc8d-708bcfc30b25"
+        ]
+      }
+    },
+    {
+      "id": "b65d210f-d8e2-477b-9f21-23f7b6ecf64a",
+      "type": "ParagraphOutline",
+      "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "title": "Results outline",
+      "created_at": "2026-11-03T07:59:14.220109+00:00",
+      "updated_at": "2026-11-03T07:59:14.220109+00:00",
+      "revision": "00f22f7e-b56a-428b-8605-c4c560f2c4f8",
+      "status": "pending",
+      "validation_status": "unverified",
+      "approval_status": "not_required",
+      "location": "research.yaml",
+      "provenance": {
+        "kind": "hypothesis",
+        "actor": "user",
+        "sources": []
+      },
+      "related_objects": [],
+      "data": {
+        "paragraph_id": "1b2a1382-06f5-4385-ad7a-18d475f4926f",
+        "purpose": "Link the measured output",
+        "main_claim": "For fixture values [1,2,3,4], the computed mean is 2.5. This is TEST DATA.",
+        "evidence": [
+          "00e7fb72-1683-4b20-95e1-6f3b5e7ea7a2"
+        ],
+        "locked": true,
+        "pinned": true
+      }
+    },
+    {
+      "id": "ddd33222-ebca-45d1-b292-54fa2d1ab0a5",
+      "type": "Paper",
+      "project_id": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "title": "Synthetic fixture paper",
+      "created_at": "2026-11-03T07:59:14.220390+00:00",
+      "updated_at": "2026-11-03T07:59:14.220390+00:00",
+      "revision": "3d1e2acc-7206-4352-a3df-f1c27c9ebaf3",
+      "status": "pending",
+      "validation_status": "unverified",
+      "approval_status": "not_required",
+      "location": "research.yaml",
+      "provenance": {
+        "kind": "hypothesis",
+        "actor": "user",
+        "sources": []
+      },
+      "related_objects": [],
+      "data": {
+        "source_path": "paper/main.tex",
+        "sections": []
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "id": "d95dc810-bf1f-4e38-a318-04f81aaabdd7",
+      "type": "supports",
+      "source": "00e7fb72-1683-4b20-95e1-6f3b5e7ea7a2",
+      "target": "83b3c6af-a23d-4ade-bc8d-708bcfc30b25",
+      "evidence": [
+        "00e7fb72-1683-4b20-95e1-6f3b5e7ea7a2"
+      ],
+      "provenance": {
+        "kind": "fact",
+        "actor": "fixture author",
+        "sources": [
+          "results.json"
+        ]
+      }
+    },
+    {
+      "id": "584f5dff-c720-4f50-8062-0b55e24bb59c",
+      "type": "addresses",
+      "source": "e91a86a1-0281-4533-a110-5bae9f015331",
+      "target": "93f3c7ca-1101-44cd-8e55-52ff9b82ee1a",
+      "evidence": [],
+      "provenance": {
+        "kind": "hypothesis",
+        "actor": "fixture author",
+        "sources": []
+      }
+    }
+  ],
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "94f91a3ec1b36b09e6c5f8b64a0a2c5dd4e09f05bee83dbff65cfd3bb529184d",
+      "size": 237
+    },
+    {
+      "path": "README.md",
+      "sha256": "74a376880333067e6bd7346eca87af45ef5cf1c5bb622d91787733f5fd2b2fe0",
+      "size": 185
+    },
+    {
+      "path": "results.json",
+      "sha256": "6e285c68c4bfb5747d77660192a1c319e97aa3c7491d037818042757de3d3cf6",
+      "size": 25
+    },
+    {
+      "path": "run.log",
+      "sha256": "6e9572a9afe3b540c340594f334cf5b0c0f859a485199cc8a762946e5cb8a2ec",
+      "size": 43
+    },
+    {
+      "path": "paper/main.tex",
+      "sha256": "e417293b68203d57df77b786348cc629af4ae56b04769b13ccc0ac389c716891",
+      "size": 404
+    },
+    {
+      "path": "schemas/AgentSession.schema.json",
+      "sha256": "6a53d1fa7a58b6c34151ca2a6afbb19acda8e6e01cbe4c37395fa0ea561db86d",
+      "size": 2889
+    },
+    {
+      "path": "schemas/Artifact.schema.json",
+      "sha256": "2cbe5703f5e8fae913d296946be30ef035f32827360b0ccfda049972ce3cb0ee",
+      "size": 3073
+    },
+    {
+      "path": "schemas/Decision.schema.json",
+      "sha256": "be1a0fe2955a0fe5702988c6fffd2480fdd12731bc4bcc692ffbe3a02ecfdd1e",
+      "size": 2965
+    },
+    {
+      "path": "schemas/Evidence.schema.json",
+      "sha256": "2a6e7374ec143cbce7c43360a166dace9ff3225c74dee192cea59043a37263e4",
+      "size": 3194
+    },
+    {
+      "path": "schemas/Experiment.schema.json",
+      "sha256": "a09935ac2524126a482608c11ad5bfb3e77ba24e3510e5387136b973875a9816",
+      "size": 2967
+    },
+    {
+      "path": "schemas/ExperimentRun.schema.json",
+      "sha256": "4bff0303f47f125b5ba532a716570295f52292a6b5d53bed6c97cdaafa6fe371",
+      "size": 3455
+    },
+    {
+      "path": "schemas/Figure.schema.json",
+      "sha256": "dca9b6a3fe05e4f80b51d6525bacc52ce3e3eeb43c51c645a8e08e14a19fd411",
+      "size": 2875
+    },
+    {
+      "path": "schemas/Hypothesis.schema.json",
+      "sha256": "c1eb195c9a83ba53d750086c96bb1a5843342e6508dfafd72a8677f06be746a6",
+      "size": 3078
+    },
+    {
+      "path": "schemas/Idea.schema.json",
+      "sha256": "a09708d5bd3ee09225247aec7f49979e1cb8119e7ba5e52ec8b77e07098762bb",
+      "size": 2875
+    },
+    {
+      "path": "schemas/LiteratureReference.schema.json",
+      "sha256": "1d893f6dd9df1ce311663d272500fc357bc117c3cfb2c769c281cfd2b33caa74",
+      "size": 2897
+    },
+    {
+      "path": "schemas/ModelBlueprint.schema.json",
+      "sha256": "fd8f89cb354207dc3de3bfff83fe028ed1c1ab25113f4a3b577e8a6870815bc0",
+      "size": 3938
+    },
+    {
+      "path": "schemas/ModelModule.schema.json",
+      "sha256": "a715a3f21e4cb83bd8bbd7ae7c18c2be610aaff02589f9ae3ebfd54fbba71ab7",
+      "size": 3068
+    },
+    {
+      "path": "schemas/PROFILE.md",
+      "sha256": "745506f246113a1fa20180f5a95a8ffe2ce48fc046ed838627e9ffe07da9e6de",
+      "size": 2734
+    },
+    {
+      "path": "schemas/Paper.schema.json",
+      "sha256": "9a8e00fece7b3347340b56de28fcaa869279ab83c29327919aa307ba59c248c3",
+      "size": 3260
+    },
+    {
+      "path": "schemas/PaperParagraph.schema.json",
+      "sha256": "12fc46c3729d85d30a53d2804fd3e29b5f72ba244ed21851cc41d79049424611",
+      "size": 3354
+    },
+    {
+      "path": "schemas/PaperSection.schema.json",
+      "sha256": "d75585c7214a2bc7041e64dc5e58ba5e5c376bb19064c76dc174f9709063de84",
+      "size": 3158
+    },
+    {
+      "path": "schemas/ParagraphOutline.schema.json",
+      "sha256": "bee783d54c4dc628085e39722f144a9bfd349bd9de886d9bf6a7ce6b1511bef0",
+      "size": 3586
+    },
+    {
+      "path": "schemas/ResearchClaim.schema.json",
+      "sha256": "b62300c82af1ae9ff62f04aa11c001cc31af2f89a5a79096e97e2f179805b6de",
+      "size": 3160
+    },
+    {
+      "path": "schemas/ResearchProject.schema.json",
+      "sha256": "c1b475d01593ed9a9a89b7681931fecae0f0d332d237f20fe12e032247f219b4",
+      "size": 3110
+    },
+    {
+      "path": "schemas/ResearchQuestion.schema.json",
+      "sha256": "201bf74de9e668f7350dcc18d03efa9c99c38e4c1e80ebc285c099562b99fbe2",
+      "size": 2897
+    },
+    {
+      "path": "schemas/Review.schema.json",
+      "sha256": "f336d0ce91230eb25b72582570b1d02cdab1d5d6cd63497be8df72b0bcae4ec6",
+      "size": 3054
+    },
+    {
+      "path": "schemas/ReviewIssue.schema.json",
+      "sha256": "8353d2ec52285482e83e3e29bb1d28061f06ff62df74c6f4a6b50f6781b00c0a",
+      "size": 3213
+    },
+    {
+      "path": "schemas/SkillRun.schema.json",
+      "sha256": "4971f1b6fb6bd1bdab2fe032675534973d495019a631df7e3e8879e1f56459f2",
+      "size": 3413
+    },
+    {
+      "path": "schemas/SubmissionAttempt.schema.json",
+      "sha256": "20573cc01428c4c4070912344f7fe85057849789d3bd4514009024cc81d41422",
+      "size": 3621
+    },
+    {
+      "path": "schemas/Table.schema.json",
+      "sha256": "99b5c132ef0963e95e80602bf8a148b297655c20e8171d1fb18a24b0836cf191",
+      "size": 2873
+    },
+    {
+      "path": "schemas/Task.schema.json",
+      "sha256": "d4ca2969ede42778e8838638e28895f7897c1cc384df2049bb4955905d002c82",
+      "size": 6887
+    },
+    {
+      "path": "schemas/VenueProfile.schema.json",
+      "sha256": "089bbde7d169a4debe17b39c02f0df8b07de421ec8e7591b6567e56a2d6dbf69",
+      "size": 2881
+    },
+    {
+      "path": "schemas/event.schema.json",
+      "sha256": "12eb497ae09cace6d4259cae3a53df57cd6575922c7909ac21bce80cfe9937de",
+      "size": 2286
+    },
+    {
+      "path": "schemas/handoff.schema.json",
+      "sha256": "7c31ff71cd77b6f22ebb1ffe83d62ed753cf4930dbcb51fb38c4712b4c8bdaba",
+      "size": 3366
+    },
+    {
+      "path": "schemas/research.schema.json",
+      "sha256": "9c70e7fe33e81720b939eeea35598e1685a7cf60207986e9c018cf37750430f4",
+      "size": 105466
+    },
+    {
+      "path": "src/baseline.py",
+      "sha256": "3067109032b868eee2b4bbde0d7a19c259ef3f1943449fb58c62943e5a7cb71c",
+      "size": 297
+    }
+  ],
+  "external_resources": [],
+  "extensions": {}
+}

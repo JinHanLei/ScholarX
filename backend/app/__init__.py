@@ -1,13 +1,16 @@
 import os
 from flask import Flask, jsonify
-from flask_cors import CORS
-
-from .db import ensure_schema
-from .routes import api
-
-
-def create_app():
+def create_app(config=None):
     app = Flask(__name__)
+    app.config.update(config or {})
+    if os.getenv('EASYREF_STORAGE', 'local') != 'supabase':
+        from .local_api import configure_local
+        return configure_local(app)
+
+    # Optional legacy deployment only. Local operation never imports cloud SDKs.
+    from flask_cors import CORS
+    from .db import ensure_schema
+    from .routes import api
     app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_UPLOAD_MB", "50")) * 1024 * 1024
     app.config["UPLOAD_FOLDER"] = os.getenv("UPLOAD_FOLDER", "/app/uploads")
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)

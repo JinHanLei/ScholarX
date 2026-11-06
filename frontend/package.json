@@ -1,15 +1,16 @@
 {
-  "name": "scholarx-frontend",
+  "name": "easyref-frontend",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "predev": "node scripts/sync-vditor-assets.mjs",
-    "dev": "vite --host 0.0.0.0",
+    "dev": "vite --host 127.0.0.1",
     "prebuild": "node scripts/sync-vditor-assets.mjs",
     "build": "vite build",
     "prepreview": "node scripts/sync-vditor-assets.mjs",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 127.0.0.1",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@chatscope/chat-ui-kit-react": "^2.1.1",
@@ -17,12 +18,15 @@
     "@supabase/supabase-js": "^2.106.1",
     "@vitejs/plugin-react": "^6.0.2",
     "lucide-react": "latest",
-    "pdfjs-dist": "^3.11.174",
+    "pdfjs-dist": "^4.10.38",
     "react": "latest",
     "react-dom": "latest",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "vditor": "^3.11.2",
     "vite": "^8.0.16"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1"
   }
 }

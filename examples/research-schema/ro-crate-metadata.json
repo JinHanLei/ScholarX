@@ -1,0 +1,763 @@
+{
+  "@context": [
+    "https://w3id.org/ro/crate/1.3/context",
+    {
+      "er": "urn:easyref:terms:",
+      "prov": "http://www.w3.org/ns/prov#",
+      "sha256": "http://schema.org/sha256"
+    }
+  ],
+  "@graph": [
+    {
+      "@id": "ro-crate-metadata.json",
+      "@type": "CreativeWork",
+      "about": {
+        "@id": "./"
+      },
+      "conformsTo": {
+        "@id": "https://w3id.org/ro/crate/1.3"
+      }
+    },
+    {
+      "@id": "./",
+      "@type": "Dataset",
+      "name": "EasyRef portable research example — TEST DATA",
+      "description": "Verify portable research state using a deterministic, synthetic Python computation.",
+      "datePublished": "2026-11-03T07:59:14.219613+00:00",
+      "license": {
+        "@id": "#license"
+      },
+      "hasPart": [
+        {
+          "@id": "AGENTS.md"
+        },
+        {
+          "@id": "README.md"
+        },
+        {
+          "@id": "results.json"
+        },
+        {
+          "@id": "run.log"
+        },
+        {
+          "@id": "paper/main.tex"
+        },
+        {
+          "@id": "schemas/AgentSession.schema.json"
+        },
+        {
+          "@id": "schemas/Artifact.schema.json"
+        },
+        {
+          "@id": "schemas/Decision.schema.json"
+        },
+        {
+          "@id": "schemas/Evidence.schema.json"
+        },
+        {
+          "@id": "schemas/Experiment.schema.json"
+        },
+        {
+          "@id": "schemas/ExperimentRun.schema.json"
+        },
+        {
+          "@id": "schemas/Figure.schema.json"
+        },
+        {
+          "@id": "schemas/Hypothesis.schema.json"
+        },
+        {
+          "@id": "schemas/Idea.schema.json"
+        },
+        {
+          "@id": "schemas/LiteratureReference.schema.json"
+        },
+        {
+          "@id": "schemas/ModelBlueprint.schema.json"
+        },
+        {
+          "@id": "schemas/ModelModule.schema.json"
+        },
+        {
+          "@id": "schemas/PROFILE.md"
+        },
+        {
+          "@id": "schemas/Paper.schema.json"
+        },
+        {
+          "@id": "schemas/PaperParagraph.schema.json"
+        },
+        {
+          "@id": "schemas/PaperSection.schema.json"
+        },
+        {
+          "@id": "schemas/ParagraphOutline.schema.json"
+        },
+        {
+          "@id": "schemas/ResearchClaim.schema.json"
+        },
+        {
+          "@id": "schemas/ResearchProject.schema.json"
+        },
+        {
+          "@id": "schemas/ResearchQuestion.schema.json"
+        },
+        {
+          "@id": "schemas/Review.schema.json"
+        },
+        {
+          "@id": "schemas/ReviewIssue.schema.json"
+        },
+        {
+          "@id": "schemas/SkillRun.schema.json"
+        },
+        {
+          "@id": "schemas/SubmissionAttempt.schema.json"
+        },
+        {
+          "@id": "schemas/Table.schema.json"
+        },
+        {
+          "@id": "schemas/Task.schema.json"
+        },
+        {
+          "@id": "schemas/VenueProfile.schema.json"
+        },
+        {
+          "@id": "schemas/event.schema.json"
+        },
+        {
+          "@id": "schemas/handoff.schema.json"
+        },
+        {
+          "@id": "schemas/research.schema.json"
+        },
+        {
+          "@id": "src/baseline.py"
+        },
+        {
+          "@id": "research.yaml"
+        },
+        {
+          "@id": "handoff.yaml"
+        },
+        {
+          "@id": "history/events.jsonl"
+        }
+      ],
+      "about": [
+        {
+          "@id": "urn:uuid:d27fdc57-f33b-4291-969d-e7127953b0a0"
+        },
+        {
+          "@id": "urn:uuid:9ffe0c1f-eede-467c-a1f3-3ff221fddd4a"
+        },
+        {
+          "@id": "urn:uuid:ee2837d9-9e3a-40d1-a311-c1abf970b93b"
+        },
+        {
+          "@id": "urn:uuid:c7586673-c6db-4c37-9557-562b0dfe41aa"
+        },
+        {
+          "@id": "urn:uuid:fe21ff43-b306-46e6-866c-9a357ee6632e"
+        },
+        {
+          "@id": "urn:uuid:2721ed11-0d4c-412b-966e-e3afc0b763fe"
+        },
+        {
+          "@id": "urn:uuid:00e7fb72-1683-4b20-95e1-6f3b5e7ea7a2"
+        },
+        {
+          "@id": "urn:uuid:83b3c6af-a23d-4ade-bc8d-708bcfc30b25"
+        },
+        {
+          "@id": "urn:uuid:93f3c7ca-1101-44cd-8e55-52ff9b82ee1a"
+        },
+        {
+          "@id": "urn:uuid:e91a86a1-0281-4533-a110-5bae9f015331"
+        },
+        {
+          "@id": "urn:uuid:adba6289-372c-4e3d-8486-b794a2f71345"
+        },
+        {
+          "@id": "urn:uuid:55cfb8f5-1f08-453e-b9c2-85124a68941d"
+        },
+        {
+          "@id": "urn:uuid:0c3359b8-00dd-457c-884d-a82416c8b825"
+        },
+        {
+          "@id": "urn:uuid:7c4874ba-711a-449b-9368-ef42aa9cec3b"
+        },
+        {
+          "@id": "urn:uuid:1b2a1382-06f5-4385-ad7a-18d475f4926f"
+        },
+        {
+          "@id": "urn:uuid:b65d210f-d8e2-477b-9f21-23f7b6ecf64a"
+        },
+        {
+          "@id": "urn:uuid:ddd33222-ebca-45d1-b292-54fa2d1ab0a5"
+        }
+      ],
+      "er:profile": {
+        "@id": "schemas/PROFILE.md"
+      }
+    },
+    {
+      "@id": "#license",
+      "@type": "CreativeWork",
+      "name": "License unspecified; obtain permission from the rights holder"
+    },
+    {
+      "@id": "schemas/PROFILE.md",
+      "@type": [
+        "File",
+        "CreativeWork"
+      ],
+      "name": "EasyRef Research Schema local extension profile",
+      "version": "1.0.0"
+    },
+    {
+      "@id": "research.yaml",
+      "@type": "File",
+      "name": "research.yaml"
+    },
+    {
+      "@id": "handoff.yaml",
+      "@type": "File",
+      "name": "handoff.yaml"
+    },
+    {
+      "@id": "history/events.jsonl",
+      "@type": "File",
+      "name": "history/events.jsonl"
+    },
+    {
+      "@id": "urn:uuid:d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "@type": [
+        "CreativeWork",
+        "er:ResearchProject",
+        "prov:Entity"
+      ],
+      "name": "EasyRef portable research example — TEST DATA",
+      "identifier": "d27fdc57-f33b-4291-969d-e7127953b0a0",
+      "er:revision": "e198e30f-4da8-4ab5-a784-3e20efd6e4a4",
+      "er:status": "pending",
+      "subjectOf": {
+        "@id": "research.yaml"
+      },
+      "er:validationStatus": "unverified"
+    },
+    {
+      "@id": "urn:uuid:9ffe0c1f-eede-467c-a1f3-3ff221fddd4a",
+      "@type": [
+        "CreativeWork",
+        "er:Idea",
+        "prov:Entity"
+      ],
+      "name": "Deterministic computation",
+      "identifier": "9ffe0c1f-eede-467c-a1f3-3ff221fddd4a",
+      "er:revision": "8c30201b-e4fb-41e9-a9f8-0eeeacbdead9",
+      "er:status": "pending",
+      "subjectOf": {
+        "@id": "research.yaml"
+      },
+      "er:validationStatus": "unverified"
+    },
+    {
+      "@id": "urn:uuid:ee2837d9-9e3a-40d1-a311-c1abf970b93b",
+      "@type": [
+        "CreativeWork",
+        "er:ModelModule",
+        "prov:Entity"
+      ],
+      "name": "Mean computation",
+      "identifier": "ee2837d9-9e3a-40d1-a311-c1abf970b93b",
+      "er:revision": "37ac3b17-bf0b-4014-a748-443a056c4cdb",
+      "er:status": "pending",
+      "subjectOf": {
+        "@id": "research.yaml"
+      },
+      "er:validationStatus": "unverified"
+    },
+    {
+      "@id": "urn:uuid:c7586673-c6db-4c37-9557-562b0dfe41aa",
+      "@type": [
+        "CreativeWork",
+        "er:ModelBlueprint",
+        "prov:Entity"
+      ],
+      "name": "Fixture blueprint",
+      "identifier": "c7586673-c6db-4c37-9557-562b0dfe41aa",
+      "er:revision": "0793e455-3471-43ba-b549-1bd463c3bd39",
+      "er:status": "pending",
+      "subjectOf": {
+        "@id": "research.yaml"
+      },
+      "er:validationStatus": "unverified"
+    },
+    {
+      "@id": "urn:uuid:fe21ff43-b306-46e6-866c-9a357ee6632e",
+      "@type": [
+        "CreativeWork",
+        "er:Experiment",
+        "prov:Entity"
+      ],
+      "name": "Synthetic baseline",
+      "identifier": "fe21ff43-b306-46e6-866c-9a357ee6632e",
+      "er:revision": "816fdabe-a578-4365-88bc-c539743054af",
+      "er:status": "pending",
+      "subjectOf": {
+        "@id": "research.yaml"
+      },
+      "er:validationStatus": "unverified"
+    },
+    {
+      "@id": "urn:uuid:2721ed11-0d4c-412b-966e-e3afc0b763fe",
+      "@type": [
+        "CreativeWork",
+        "er:ExperimentRun",
+        "prov:Activity"
+      ],
+      "name": "Executed synthetic baseline",
+      "identifier": "2721ed11-0d4c-412b-966e-e3afc0b763fe",
+      "er:revision": "b8753fc1-2d18-4fdd-a043-336389b76727",
+      "er:status": "completed",
+      "subjectOf": {
+        "@id": "research.yaml"
+      },
+      "er:validationStatus": "unverified"
+    },
+    {
+      "@id": "urn:uuid:00e7fb72-1683-4b20-95e1-6f3b5e7ea7a2",
+      "@type": [
+        "CreativeWork",
+        "er:Evidence",
+        "prov:Entity"
+      ],
+      "name": "Actual metrics file",
+      "identifier": "00e7fb72-1683-4b20-95e1-6f3b5e7ea7a2",
+      "er:revision": "50269430-a3b8-4bce-a51b-6cc25de810e3",
+      "er:status": "pending",
+      "subjectOf": {
+        "@id": "research.yaml"
+      },
+      "er:validationStatus": "unverified",
+      "er:supports": [
+        {
+          "@id": "urn:uuid:83b3c6af-a23d-4ade-bc8d-708bcfc30b25"
+        }
+      ]
+    },
+    {
+      "@id": "urn:uuid:83b3c6af-a23d-4ade-bc8d-708bcfc30b25",
+      "@type": [
+        "CreativeWork",
+        "er:ResearchClaim",
+        "prov:Entity"
+      ],
+      "name": "Synthetic arithmetic result",
+      "identifier": "83b3c6af-a23d-4ade-bc8d-708bcfc30b25",
+      "er:revision": "3ddcbd0e-9cf6-48c7-93b1-4e3aeca47109",
+      "er:status": "pending",
+      "subjectOf": {
+        "@id": "research.yaml"
+      },
+      "er:validationStatus": "unverified"
+    },
+    {
+      "@id": "urn:uuid:93f3c7ca-1101-44cd-8e55-52ff9b82ee1a",
+      "@type": [
+        "CreativeWork",
+        "er:ReviewIssue",
+        "prov:Entity"
+      ],
+      "name": "No generalization claim",
+      "identifier": "93f3c7ca-1101-44cd-8e55-52ff9b82ee1a",
+      "er:revision": "1da306bb-0916-47b0-97a4-2fc15a6e1826",
+      "er:status": "pending",
+      "subjectOf": {
+        "@id": "research.yaml"
+      },
+      "er:validationStatus": "unverified"
+    },
+    {
+      "@id": "urn:uuid:e91a86a1-0281-4533-a110-5bae9f015331",
+      "@type": [
+        "CreativeWork",
+        "er:Task",
+        "prov:Entity"
+      ],
+      "name": "Continue synthetic second run",
+      "identifier": "e91a86a1-0281-4533-a110-5bae9f015331",
+      "er:revision": "fbb5b57d-2c0f-4e0f-9048-eb9c757dacc9",
+      "er:status": "interrupted",
+      "subjectOf": {
+        "@id": "research.yaml"
+      },
+      "er:validationStatus": "unverified",
+      "er:addresses": [
+        {
+          "@id": "urn:uuid:93f3c7ca-1101-44cd-8e55-52ff9b82ee1a"
+        }
+      ]
+    },
+    {
+      "@id": "urn:uuid:adba6289-372c-4e3d-8486-b794a2f71345",
+      "@type": [
+        "CreativeWork",
+        "er:PaperParagraph",
+        "prov:Entity"
+      ],
+      "name": "Motivation",
+      "identifier": "adba6289-372c-4e3d-8486-b794a2f71345",
+      "er:revision": "e404e268-6305-415e-9307-76d54b9aa505",
+      "er:status": "pending",
+      "subjectOf": {
+        "@id": "research.yaml"
+      },
+      "er:validationStatus": "unverified"
+    },
+    {
+      "@id": "urn:uuid:55cfb8f5-1f08-453e-b9c2-85124a68941d",
+      "@type": [
+        "CreativeWork",
+        "er:ParagraphOutline",
+        "prov:Entity"
+      ],
+      "name": "Motivation outline",
+      "identifier": "55cfb8f5-1f08-453e-b9c2-85124a68941d",
+      "er:revision": "f5f9b988-0cae-4b05-a81e-bbed2cd544d1",
+      "er:status": "pending",
+      "subjectOf": {
+        "@id": "research.yaml"
+      },
+      "er:validationStatus": "unverified"
+    },
+    {
+      "@id": "urn:uuid:0c3359b8-00dd-457c-884d-a82416c8b825",
+      "@type": [
+        "CreativeWork",
+        "er:PaperParagraph",
+        "prov:Entity"
+      ],
+      "name": "Method",
+      "identifier": "0c3359b8-00dd-457c-884d-a82416c8b825",
+      "er:revision": "b0695eec-2a30-4b8d-bc29-c02958c3cce1",
+      "er:status": "pending",
+      "subjectOf": {
+        "@id": "research.yaml"
+      },
+      "er:validationStatus": "unverified"
+    },
+    {
+      "@id": "urn:uuid:7c4874ba-711a-449b-9368-ef42aa9cec3b",
+      "@type": [
+        "CreativeWork",
+        "er:ParagraphOutline",
+        "prov:Entity"
+      ],
+      "name": "Method outline",
+      "identifier": "7c4874ba-711a-449b-9368-ef42aa9cec3b",
+      "er:revision": "a7ed5ef7-1792-4018-a239-bd79c21688ec",
+      "er:status": "pending",
+      "subjectOf": {
+        "@id": "research.yaml"
+      },
+      "er:validationStatus": "unverified"
+    },
+    {
+      "@id": "urn:uuid:1b2a1382-06f5-4385-ad7a-18d475f4926f",
+      "@type": [
+        "CreativeWork",
+        "er:PaperParagraph",
+        "prov:Entity"
+      ],
+      "name": "Results",
+      "identifier": "1b2a1382-06f5-4385-ad7a-18d475f4926f",
+      "er:revision": "c13e1f71-d771-4727-a5ae-b3a7bf088e12",
+      "er:status": "pending",
+      "subjectOf": {
+        "@id": "research.yaml"
+      },
+      "er:validationStatus": "unverified"
+    },
+    {
+      "@id": "urn:uuid:b65d210f-d8e2-477b-9f21-23f7b6ecf64a",
+      "@type": [
+        "CreativeWork",
+        "er:ParagraphOutline",
+        "prov:Entity"
+      ],
+      "name": "Results outline",
+      "identifier": "b65d210f-d8e2-477b-9f21-23f7b6ecf64a",
+      "er:revision": "00f22f7e-b56a-428b-8605-c4c560f2c4f8",
+      "er:status": "pending",
+      "subjectOf": {
+        "@id": "research.yaml"
+      },
+      "er:validationStatus": "unverified"
+    },
+    {
+      "@id": "urn:uuid:ddd33222-ebca-45d1-b292-54fa2d1ab0a5",
+      "@type": [
+        "CreativeWork",
+        "er:Paper",
+        "prov:Entity"
+      ],
+      "name": "Synthetic fixture paper",
+      "identifier": "ddd33222-ebca-45d1-b292-54fa2d1ab0a5",
+      "er:revision": "3d1e2acc-7206-4352-a3df-f1c27c9ebaf3",
+      "er:status": "pending",
+      "subjectOf": {
+        "@id": "research.yaml"
+      },
+      "er:validationStatus": "unverified"
+    },
+    {
+      "@id": "AGENTS.md",
+      "@type": "File",
+      "name": "AGENTS.md",
+      "contentSize": "237",
+      "sha256": "94f91a3ec1b36b09e6c5f8b64a0a2c5dd4e09f05bee83dbff65cfd3bb529184d"
+    },
+    {
+      "@id": "README.md",
+      "@type": "File",
+      "name": "README.md",
+      "contentSize": "185",
+      "sha256": "74a376880333067e6bd7346eca87af45ef5cf1c5bb622d91787733f5fd2b2fe0"
+    },
+    {
+      "@id": "results.json",
+      "@type": "File",
+      "name": "results.json",
+      "contentSize": "25",
+      "sha256": "6e285c68c4bfb5747d77660192a1c319e97aa3c7491d037818042757de3d3cf6"
+    },
+    {
+      "@id": "run.log",
+      "@type": "File",
+      "name": "run.log",
+      "contentSize": "43",
+      "sha256": "6e9572a9afe3b540c340594f334cf5b0c0f859a485199cc8a762946e5cb8a2ec"
+    },
+    {
+      "@id": "paper/main.tex",
+      "@type": "File",
+      "name": "paper/main.tex",
+      "contentSize": "404",
+      "sha256": "e417293b68203d57df77b786348cc629af4ae56b04769b13ccc0ac389c716891"
+    },
+    {
+      "@id": "schemas/AgentSession.schema.json",
+      "@type": "File",
+      "name": "schemas/AgentSession.schema.json",
+      "contentSize": "2889",
+      "sha256": "6a53d1fa7a58b6c34151ca2a6afbb19acda8e6e01cbe4c37395fa0ea561db86d"
+    },
+    {
+      "@id": "schemas/Artifact.schema.json",
+      "@type": "File",
+      "name": "schemas/Artifact.schema.json",
+      "contentSize": "3073",
+      "sha256": "2cbe5703f5e8fae913d296946be30ef035f32827360b0ccfda049972ce3cb0ee"
+    },
+    {
+      "@id": "schemas/Decision.schema.json",
+      "@type": "File",
+      "name": "schemas/Decision.schema.json",
+      "contentSize": "2965",
+      "sha256": "be1a0fe2955a0fe5702988c6fffd2480fdd12731bc4bcc692ffbe3a02ecfdd1e"
+    },
+    {
+      "@id": "schemas/Evidence.schema.json",
+      "@type": "File",
+      "name": "schemas/Evidence.schema.json",
+      "contentSize": "3194",
+      "sha256": "2a6e7374ec143cbce7c43360a166dace9ff3225c74dee192cea59043a37263e4"
+    },
+    {
+      "@id": "schemas/Experiment.schema.json",
+      "@type": "File",
+      "name": "schemas/Experiment.schema.json",
+      "contentSize": "2967",
+      "sha256": "a09935ac2524126a482608c11ad5bfb3e77ba24e3510e5387136b973875a9816"
+    },
+    {
+      "@id": "schemas/ExperimentRun.schema.json",
+      "@type": "File",
+      "name": "schemas/ExperimentRun.schema.json",
+      "contentSize": "3455",
+      "sha256": "4bff0303f47f125b5ba532a716570295f52292a6b5d53bed6c97cdaafa6fe371"
+    },
+    {
+      "@id": "schemas/Figure.schema.json",
+      "@type": "File",
+      "name": "schemas/Figure.schema.json",
+      "contentSize": "2875",
+      "sha256": "dca9b6a3fe05e4f80b51d6525bacc52ce3e3eeb43c51c645a8e08e14a19fd411"
+    },
+    {
+      "@id": "schemas/Hypothesis.schema.json",
+      "@type": "File",
+      "name": "schemas/Hypothesis.schema.json",
+      "contentSize": "3078",
+      "sha256": "c1eb195c9a83ba53d750086c96bb1a5843342e6508dfafd72a8677f06be746a6"
+    },
+    {
+      "@id": "schemas/Idea.schema.json",
+      "@type": "File",
+      "name": "schemas/Idea.schema.json",
+      "contentSize": "2875",
+      "sha256": "a09708d5bd3ee09225247aec7f49979e1cb8119e7ba5e52ec8b77e07098762bb"
+    },
+    {
+      "@id": "schemas/LiteratureReference.schema.json",
+      "@type": "File",
+      "name": "schemas/LiteratureReference.schema.json",
+      "contentSize": "2897",
+      "sha256": "1d893f6dd9df1ce311663d272500fc357bc117c3cfb2c769c281cfd2b33caa74"
+    },
+    {
+      "@id": "schemas/ModelBlueprint.schema.json",
+      "@type": "File",
+      "name": "schemas/ModelBlueprint.schema.json",
+      "contentSize": "3938",
+      "sha256": "fd8f89cb354207dc3de3bfff83fe028ed1c1ab25113f4a3b577e8a6870815bc0"
+    },
+    {
+      "@id": "schemas/ModelModule.schema.json",
+      "@type": "File",
+      "name": "schemas/ModelModule.schema.json",
+      "contentSize": "3068",
+      "sha256": "a715a3f21e4cb83bd8bbd7ae7c18c2be610aaff02589f9ae3ebfd54fbba71ab7"
+    },
+    {
+      "@id": "schemas/Paper.schema.json",
+      "@type": "File",
+      "name": "schemas/Paper.schema.json",
+      "contentSize": "3260",
+      "sha256": "9a8e00fece7b3347340b56de28fcaa869279ab83c29327919aa307ba59c248c3"
+    },
+    {
+      "@id": "schemas/PaperParagraph.schema.json",
+      "@type": "File",
+      "name": "schemas/PaperParagraph.schema.json",
+      "contentSize": "3354",
+      "sha256": "12fc46c3729d85d30a53d2804fd3e29b5f72ba244ed21851cc41d79049424611"
+    },
+    {
+      "@id": "schemas/PaperSection.schema.json",
+      "@type": "File",
+      "name": "schemas/PaperSection.schema.json",
+      "contentSize": "3158",
+      "sha256": "d75585c7214a2bc7041e64dc5e58ba5e5c376bb19064c76dc174f9709063de84"
+    },
+    {
+      "@id": "schemas/ParagraphOutline.schema.json",
+      "@type": "File",
+      "name": "schemas/ParagraphOutline.schema.json",
+      "contentSize": "3586",
+      "sha256": "bee783d54c4dc628085e39722f144a9bfd349bd9de886d9bf6a7ce6b1511bef0"
+    },
+    {
+      "@id": "schemas/ResearchClaim.schema.json",
+      "@type": "File",
+      "name": "schemas/ResearchClaim.schema.json",
+      "contentSize": "3160",
+      "sha256": "b62300c82af1ae9ff62f04aa11c001cc31af2f89a5a79096e97e2f179805b6de"
+    },
+    {
+      "@id": "schemas/ResearchProject.schema.json",
+      "@type": "File",
+      "name": "schemas/ResearchProject.schema.json",
+      "contentSize": "3110",
+      "sha256": "c1b475d01593ed9a9a89b7681931fecae0f0d332d237f20fe12e032247f219b4"
+    },
+    {
+      "@id": "schemas/ResearchQuestion.schema.json",
+      "@type": "File",
+      "name": "schemas/ResearchQuestion.schema.json",
+      "contentSize": "2897",
+      "sha256": "201bf74de9e668f7350dcc18d03efa9c99c38e4c1e80ebc285c099562b99fbe2"
+    },
+    {
+      "@id": "schemas/Review.schema.json",
+      "@type": "File",
+      "name": "schemas/Review.schema.json",
+      "contentSize": "3054",
+      "sha256": "f336d0ce91230eb25b72582570b1d02cdab1d5d6cd63497be8df72b0bcae4ec6"
+    },
+    {
+      "@id": "schemas/ReviewIssue.schema.json",
+      "@type": "File",
+      "name": "schemas/ReviewIssue.schema.json",
+      "contentSize": "3213",
+      "sha256": "8353d2ec52285482e83e3e29bb1d28061f06ff62df74c6f4a6b50f6781b00c0a"
+    },
+    {
+      "@id": "schemas/SkillRun.schema.json",
+      "@type": "File",
+      "name": "schemas/SkillRun.schema.json",
+      "contentSize": "3413",
+      "sha256": "4971f1b6fb6bd1bdab2fe032675534973d495019a631df7e3e8879e1f56459f2"
+    },
+    {
+      "@id": "schemas/SubmissionAttempt.schema.json",
+      "@type": "File",
+      "name": "schemas/SubmissionAttempt.schema.json",
+      "contentSize": "3621",
+      "sha256": "20573cc01428c4c4070912344f7fe85057849789d3bd4514009024cc81d41422"
+    },
+    {
+      "@id": "schemas/Table.schema.json",
+      "@type": "File",
+      "name": "schemas/Table.schema.json",
+      "contentSize": "2873",
+      "sha256": "99b5c132ef0963e95e80602bf8a148b297655c20e8171d1fb18a24b0836cf191"
+    },
+    {
+      "@id": "schemas/Task.schema.json",
+      "@type": "File",
+      "name": "schemas/Task.schema.json",
+      "contentSize": "6887",
+      "sha256": "d4ca2969ede42778e8838638e28895f7897c1cc384df2049bb4955905d002c82"
+    },
+    {
+      "@id": "schemas/VenueProfile.schema.json",
+      "@type": "File",
+      "name": "schemas/VenueProfile.schema.json",
+      "contentSize": "2881",
+      "sha256": "089bbde7d169a4debe17b39c02f0df8b07de421ec8e7591b6567e56a2d6dbf69"
+    },
+    {
+      "@id": "schemas/event.schema.json",
+      "@type": "File",
+      "name": "schemas/event.schema.json",
+      "contentSize": "2286",
+      "sha256": "12eb497ae09cace6d4259cae3a53df57cd6575922c7909ac21bce80cfe9937de"
+    },
+    {
+      "@id": "schemas/handoff.schema.json",
+      "@type": "File",
+      "name": "schemas/handoff.schema.json",
+      "contentSize": "3366",
+      "sha256": "7c31ff71cd77b6f22ebb1ffe83d62ed753cf4930dbcb51fb38c4712b4c8bdaba"
+    },
+    {
+      "@id": "schemas/research.schema.json",
+      "@type": "File",
+      "name": "schemas/research.schema.json",
+      "contentSize": "105466",
+      "sha256": "9c70e7fe33e81720b939eeea35598e1685a7cf60207986e9c018cf37750430f4"
+    },
+    {
+      "@id": "src/baseline.py",
+      "@type": "File",
+      "name": "src/baseline.py",
+      "contentSize": "297",
+      "sha256": "3067109032b868eee2b4bbde0d7a19c259ef3f1943449fb58c62943e5a7cb71c"
+    }
+  ]
+}

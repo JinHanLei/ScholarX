@@ -1,4 +1,6 @@
-# ScholarX
+# EasyRef
+
+EasyRef now defaults to a local research workbench using React/Vite, Flask, SQLite/FTS5, Git and the installed Codex app-server. No Docker, Supabase or separate API key is required for local operation. See [local setup and delivery notes](docs/LOCAL_WORKBENCH.md) and the current [quick start](README.md). The deployment instructions below describe the optional legacy Supabase mode (`EASYREF_STORAGE=supabase`, `VITE_EASYREF_LEGACY=true`). Existing data is preserved.
 
 [![简体中文](https://img.shields.io/badge/简体中文-README-green)](README_zh.md)
 [![English](https://img.shields.io/badge/English-README-blue)](README_en.md)

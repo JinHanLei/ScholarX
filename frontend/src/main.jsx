@@ -1,10 +1,72 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createClient } from '@supabase/supabase-js';
-import * as pdfjsLib from 'pdfjs-dist/build/pdf';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import VditorMarkdownEditor from './VditorMarkdownEditor';
+import AgentChat from './components/AgentChat.jsx';
+import { findFirstMarkdownFile } from './components/AgentNoteWorkspace.jsx';
+import {
+  AddPaperModal,
+  AssociatePaperModal,
+  FolderModal,
+  LibraryCreateProgress,
+  LibraryModal,
+  PaperDetailsModal,
+  PdfMismatchModal,
+  RenamePaperModal,
+  ShareLibraryModal,
+  TagCheckboxes,
+  TagFilterMenu,
+  TagMenu,
+  TagModal,
+} from './components/LibraryModals.jsx';
+import { FileContextMenu, LibraryTree } from './components/LibrarySidebar.jsx';
+import { ContextMenu, PaginationBar, SortButton } from './components/PaperTableControls.jsx';
+import { AuthPage, HomePage, ModelSelectionModal, TrashPage, WritingMemoryModal } from './components/Pages.jsx';
+import { Avatar, ProfilePage } from './components/profile/index.js';
+import { PdfJsViewer, PdfTranslationPopup } from './components/PdfViewer.jsx';
+import useClickOutside from './hooks/useClickOutside.js';
+import COPY from './i18n/copy.js';
+import { API, api, downloadApiFile, streamApi } from './utils/api.js';
+import { chatBelongsToLibrary, chatLibraryId, hasUserMessages, mergeChatTrace } from './utils/chat.js';
+import { parseCitationId } from './utils/citations.js';
+import { initialLlmSettings, isInvalidModelId } from './utils/models.js';
+import {
+  ROOT_FOLDER_MARKER,
+  displayPaperAbstract,
+  displayPaperTitle,
+  displayVenue,
+  folderAncestors,
+  formatDateOnly,
+  formatAuthors,
+  isUnmatchedUploadedPaper,
+  normalizeFolderPath,
+} from './utils/papers.js';
+import {
+  emptyFilters,
+  emptyTableFilters,
+  hasScopeFilter,
+  normalizeTableSorts,
+  normalizeRanks,
+  normalizeVenues,
+  parseRankToken,
+  primaryTableSort,
+  rankParam,
+  serializeTableSorts,
+  splitScopeDraft,
+  venueParam,
+} from './utils/tableFilters.js';
+import {
+  buildCreativeDraftPrompt,
+  buildMainDraftPrompt,
+  buildOutlineMarkdown,
+  chooseReferencePapers,
+  compactText,
+  inferWritingDomain,
+  isCreativeWritingTask,
+  isPlanningWritingTask,
+  markdownFileNameFromPrompt,
+  selectedChatPaperIds,
+  targetVenueFromPrompt,
+} from './utils/writing.js';
 import {
   ArrowRight,
   ArrowUpDown,
@@ -30,10 +92,11 @@ import {
   Languages,
   Library,
   LogOut,
+  LayoutDashboard,
+  MoreVertical,
   Pencil,
   Plus,
   Puzzle,
-  RotateCcw,
   Rocket,
   Search,
   Send,
@@ -49,964 +112,150 @@ import {
   X,
 } from 'lucide-react';
 import './styles.css';
+import ResearchWorkbench from './components/research/ResearchWorkbench.jsx';
+import { ResearchErrorBoundary } from './components/research/shared.jsx';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js?v=pdfjs-3.11.174';
-
-const API = import.meta.env.VITE_API_URL || '/api';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:8000';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-const supabase = SUPABASE_ANON_KEY
+const DEFAULT_COLUMNS = { left: 1.05, middle: 3, right: 3 };
+const PAPER_VIEW_STATE_KEY = 'scholarx.paperViewState';
+const LAYOUT_PRESETS = {
+  default: {
+    columns: DEFAULT_COLUMNS,
+    leftCollapsed: false,
+    rightCollapsed: false,
+    filesOpen: false,
+    fileSidebarCollapsed: false,
+  },
+  reading: {
+    columns: DEFAULT_COLUMNS,
+    leftCollapsed: false,
+    rightCollapsed: false,
+    filesOpen: true,
+    fileSidebarCollapsed: false,
+  },
+  immersive: {
+    columns: DEFAULT_COLUMNS,
+    leftCollapsed: true,
+    rightCollapsed: false,
+    filesOpen: true,
+    fileSidebarCollapsed: true,
+  },
+};
+
+function readStoredLayoutPreset() {
+  try {
+    const stored = localStorage.getItem('scholarx.layoutPreset') || 'default';
+    return LAYOUT_PRESETS[stored] ? stored : 'default';
+  } catch {
+    return 'default';
+  }
+}
+
+function columnsFromStorage() {
+  try {
+    const stored = JSON.parse(localStorage.getItem('scholarx.columns') || 'null');
+    if (!stored) return DEFAULT_COLUMNS;
+    if (stored.left === 1 && stored.middle === 4 && stored.right === 2) return DEFAULT_COLUMNS;
+    if (stored.left === 1.15 && stored.middle === 4 && stored.right === 2) return DEFAULT_COLUMNS;
+    return stored;
+  } catch {
+    return DEFAULT_COLUMNS;
+  }
+}
+
+function readStoredLayoutState() {
+  try {
+    const stored = JSON.parse(localStorage.getItem('scholarx.layoutState') || 'null');
+    if (stored && typeof stored === 'object') {
+      return {
+        preset: LAYOUT_PRESETS[stored.preset] ? stored.preset : readStoredLayoutPreset(),
+        columns: stored.columns || columnsFromStorage(),
+        leftCollapsed: Boolean(stored.leftCollapsed),
+        rightCollapsed: Boolean(stored.rightCollapsed),
+        filesOpen: Boolean(stored.filesOpen),
+        fileSidebarCollapsed: Boolean(stored.fileSidebarCollapsed),
+      };
+    }
+  } catch {
+    // fall through to legacy layout preset
+  }
+  const presetName = readStoredLayoutPreset();
+  return { preset: presetName, ...LAYOUT_PRESETS[presetName] };
+}
+
+function readStoredJson(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function readStoredActiveLibraryId() {
+  const stored = readStoredJson('scholarx.activeLibrary', null);
+  return stored?.id ?? null;
+}
+
+function normalizeStoredTableFilters(value) {
+  const fallback = emptyTableFilters();
+  if (!value || typeof value !== 'object') return fallback;
+  const page = Number(value.page);
+  const pageSize = Number(value.page_size);
+  const sorts = normalizeTableSorts(value);
+  const primary = sorts[0] || { column: '', dir: '' };
+  return {
+    ...fallback,
+    ...value,
+    venues: Array.isArray(value.venues) ? value.venues : fallback.venues,
+    ranks: Array.isArray(value.ranks) ? value.ranks : fallback.ranks,
+    page: Number.isFinite(page) && page > 0 ? Math.floor(page) : fallback.page,
+    page_size: Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : fallback.page_size,
+    sorts,
+    sort_by: primary.column,
+    sort_dir: primary.dir,
+  };
+}
+
+function readStoredPaperViewStates() {
+  const stored = readStoredJson(PAPER_VIEW_STATE_KEY, {});
+  return stored && typeof stored === 'object' ? stored : {};
+}
+
+function readStoredPaperViewState(libraryId) {
+  if (!libraryId) return null;
+  const state = readStoredPaperViewStates()[String(libraryId)];
+  if (!state || typeof state !== 'object') return null;
+  return {
+    ...state,
+    filters: normalizeStoredTableFilters(state.filters),
+    scrollTop: Math.max(0, Number(state.scrollTop) || 0),
+  };
+}
+
+function writeStoredPaperViewState(libraryId, patch) {
+  if (!libraryId) return;
+  const key = String(libraryId);
+  const states = readStoredPaperViewStates();
+  const current = states[key] && typeof states[key] === 'object' ? states[key] : {};
+  states[key] = {
+    ...current,
+    ...patch,
+    updatedAt: Date.now(),
+  };
+  try {
+    localStorage.setItem(PAPER_VIEW_STATE_KEY, JSON.stringify(states));
+  } catch {
+    // Ignore storage quota/private-mode failures; the visible state remains usable.
+  }
+}
+
+const supabase = import.meta.env.VITE_EASYREF_LEGACY === 'true' && SUPABASE_ANON_KEY
   ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: true, autoRefreshToken: true },
   })
   : null;
-
-function pdfFetchUrl(url) {
-  if (!url) return '';
-  if (url.startsWith('/')) return url;
-  return `${API}/pdf/proxy?url=${encodeURIComponent(url)}`;
-}
-
-const COPY = {
-  zh: {
-    common: {
-      language: '中文',
-      switchLanguage: 'EN',
-      home: '首页',
-      demo: '查看 Demo',
-      cancel: '取消',
-      allRanks: '全部等级',
-      dynamic: '动态',
-      static: '静态',
-      save: '保存',
-      add: '添加',
-      search: '搜索',
-      signIn: '登录',
-      signUp: '注册',
-      signOut: '退出',
-      resetLayout: '恢复默认布局',
-      background: '后台处理',
-      confirmDelete: '确认删除',
-      backToWorkbench: '返回工作台',
-    },
-    brand: {
-      name: 'ScholarX Academy',
-      indexed: '篇论文已索引',
-      fallback: '研究学习工作室',
-    },
-    home: {
-      eyebrow: '一站式论文管理平台',
-      title: '一键生成文献综述',
-      subtitle:
-        '创建论文库、跟踪阅读进度、用 Tag 搭建专题模块，再让 Agent 帮你完成综述、PDF 问答和 LaTeX 草稿。',
-      primary: '进入 ScholarX',
-      secondary: '了解流程',
-      navFeatures: '功能',
-      navStories: '反馈',
-      catalogTitle: '课程目录预览',
-      catalogMeta: '动态论文库',
-      catalogDesc: '从关键词生成研究轨道，数据库更新后自动补充新论文。',
-      progressTitle: '进度追踪演示',
-      progressMeta: '论文、PDF、Tag 同步推进',
-      progressDesc: '像整理课程作业一样整理阅读状态和分类线索。',
-      courseA: '股票预测专题',
-      courseB: '多模态检索专题',
-      courseC: '大模型 Agent 专题',
-      progressDone: '已归类',
-      progressPdf: 'PDF 已解析',
-      progressDraft: '综述草稿',
-      testimonialTitle: '学生反馈',
-      testimonialOne: '“一下午就把综述结构搭出来了。”',
-      testimonialTwo: '“Tag 列比普通收藏夹更像真正的研究管理。”',
-      ctaTitle: '准备开始第一节研究课了吗？',
-      ctaDesc: '进入 Demo 后点击左侧添加库，用关键词创建你的第一条论文轨道。',
-      ctaButton: '进入 ScholarX',
-    },
-    workbench: {
-      eyebrow: '研究课程工作台',
-      title: '把论文库当作课程轨道来推进',
-      subtitle:
-        '每次搜索都会创建一个论文库。你可以同步动态库、上传 PDF、给论文打 Tag，并让 Agent 生成综述与 LaTeX 草稿。',
-      addLibrary: '添加库',
-      browseCatalog: '浏览目录',
-      catalogTitle: '课程目录',
-      startKeyword: '从关键词开始',
-      dynamicTrack: 'DBLP 更新后自动刷新',
-      staticTrack: '保持一次搜索的快照',
-      progressDemo: '进度演示',
-      papersLoaded: '篇论文已载入',
-      testimonialA: '“午饭前就整理出综述提纲。”',
-      testimonialB: '“Tag 让文献分类终于清爽了。”',
-      catalogFallback: '论文目录',
-      selected: '已选',
-      tableSearch: '筛选标题 / venue',
-      applyTableFilter: '应用表格筛选',
-      sync: '同步',
-      empty: '点击左侧添加库，创建你的第一条研究课程。',
-      creatingTitle: '正在检索论文',
-      creatingDesc: 'ScholarX 正在创建论文库并匹配 DBLP 与 CCF 数据，你可以先退到后台继续浏览。',
-      backgroundNotice: '论文库正在后台创建，完成后会自动刷新列表。',
-      backHome: '返回首页',
-      pageSize: '每页',
-      page: '第',
-      total: '共',
-      previous: '上一页',
-      next: '下一页',
-      filters: '筛选',
-      clearFilters: '清除',
-      download: '下载',
-      downloadCsv: 'CSV',
-      downloadExcel: 'Excel',
-      exportCitations: '导出',
-      exportBib: 'BibTeX (.bib)',
-      exportApa: 'APA (.txt)',
-      exportMla: 'MLA (.txt)',
-      exportGbt: 'GB/T 7714 (.txt)',
-      citationFetching: '正在抓取参考文献',
-      citationReady: '参考文献已就绪',
-      citationRetry: '重试失败引用',
-      addPapers: '添加论文',
-      papersMode: '论文库',
-      filesMode: '文件库',
-      fileLibrary: '文件库',
-      newMarkdown: '新建 Markdown',
-      newFile: '新建文件',
-      newFolder: '新建文件夹',
-      rename: '重命名',
-      filesTab: '文件',
-      outlineTab: '大纲',
-      sourceMode: '源代码',
-      unsavedExit: '当前文件有未保存内容，确定要离开吗？',
-      exportAll: '导出',
-      saveFile: '保存文件',
-      exportFile: '导出文件',
-      fileSaved: '文件已保存',
-      fileEmpty: '还没有文件。让 Agent 写一篇综述，或新建 Markdown。',
-      viewPdf: '查看 PDF',
-      closePdf: '返回',
-      translateSelection: '划词翻译',
-      translateSelectionOn: '划词翻译已开启',
-      translating: '翻译中...',
-      translation: '翻译',
-      pdfLoading: '正在加载 PDF...',
-      pdfLoadError: 'PDF 加载失败',
-      associatePaper: '关联论文',
-      indexedPrefix: '共收录',
-      indexedSuffix: '篇论文',
-      updatedAt: '更新于',
-    },
-    library: {
-      add: '添加库',
-      empty: '还没有论文库，点击上方按钮开始。',
-      dynamic: '动态更新',
-      static: '静态快照',
-      delete: '删除论文库',
-      deleteConfirm: '确定删除这个论文库吗？库内关联会被删除，但全局论文数据不会删除。',
-    },
-    table: {
-      paper: '论文',
-      abstract: '摘要',
-      authors: '作者',
-      details: '详细信息',
-      detailsReadonly: '标题、作者、年份和 venue 来自论文索引，只能编辑摘要和 PDF。',
-      abstractPlaceholder: '手动添加或修正 abstract',
-      abstractSaved: '摘要已保存',
-      year: '年份',
-      rank: '等级',
-      venue: 'Venue',
-      tagColumn: 'Tag 列',
-      pdf: 'PDF',
-      noPdf: '还没有 PDF',
-      folder: '子目录',
-      allFolders: '全部论文',
-      rootFolder: '主目录',
-      noFolder: '未分类',
-      moveToFolder: '移动',
-      moveToRoot: '移出子目录',
-      moveSuccess: '移动成功',
-      copyToFolder: '复制',
-      copySuccess: '复制成功',
-      selectAllLibrary: '全选当前筛选结果',
-      clearSelection: '取消全选',
-      chooseTag: '选择 Tag',
-      allTags: '全部 Tag',
-      noTags: '还没有 Tag',
-      noTagDefinitions: '请先在表头添加 Tag',
-      addTag: '添加 Tag',
-      editTag: '编辑 Tag',
-      enrich: '联网补全详情',
-      uploadPdf: '上传 PDF',
-      confirmPdfUpload: '确认 PDF 上传',
-      confirmPdfUploadDesc: '请核对当前论文与上传 PDF 的信息后确认绑定。',
-      currentPaper: '当前论文',
-      uploadedPdf: '上传的 PDF',
-      similarity: '相似度',
-      storeAnyway: '确认上传',
-      uploadPdfZip: '上传 PDF / ZIP',
-      associate: '关联',
-      relink: '重新链接',
-      renamePaper: '重命名论文',
-      renamePaperDesc: '仅修改这条未匹配上传论文在当前库中的显示标题。',
-      renameSuccess: '论文标题已更新',
-      remove: '从库中删除',
-      restore: '恢复',
-      deleteFolder: '删除目录',
-      deleteFolderConfirm: '确定删除这个目录及其下级目录吗？其中的论文会移动到上级目录。',
-      sortAsc: '升序',
-      sortDesc: '降序',
-      titleFilter: '标题包含',
-      venueFilter: 'Venue 包含',
-      yearFrom: '起始年',
-      yearTo: '结束年',
-    },
-    agent: {
-      title: 'Agent',
-      newChat: '新对话',
-      history: '历史',
-      deleteChat: '删除对话',
-      settings: '模型设置',
-      baseUrl: '接口地址',
-      apiKey: 'API Key',
-      model: '模型',
-      saveSettings: '保存设置',
-      settingsSaved: '设置已保存在本地浏览器。',
-      skills: 'Skills',
-      install: '安装',
-      uninstall: '卸载',
-      installed: '已安装',
-      enable: '启用',
-      skillEmpty: '还没有可用 Skill。',
-      skillActivePrefix: '已启用 ',
-      skillActiveSuffix: ' 个 Skill',
-      selectedPrefix: '参考 ',
-      selectedSuffix: ' 篇论文',
-      context: '使用当前论文库上下文',
-      placeholder: '询问综述、分类、PDF 内容或 LaTeX 输出',
-      send: '发送',
-      resend: '重新发送',
-      thinking: '思考中',
-      thinkingDone: '已思考完毕',
-      stop: '停止',
-      stopped: '已停止生成。',
-      requestFailed: '模型请求失败：',
-      references: '本轮参考论文',
-      evidence: '证据片段',
-      process: '执行过程',
-      emptyLibraryHistory: '暂无对话',
-      unassignedHistory: '未归属',
-      greeting: '选择论文后，我可以基于当前论文库和 PDF 内容协助整理综述、提炼方法与生成 LaTeX 草稿。',
-      pdfParsed: '已解析 PDF：',
-      pdfEmpty: '没有提取到文本。',
-    },
-    user: {
-      profile: '个人中心',
-      trash: '回收站',
-      modelSelect: '选择模型',
-      modelTitle: '选择模型',
-      modelDesc: '从当前接口地址拉取可用模型；智能模式后续会支持按任务分配不同模型。',
-      modelList: '模型',
-      modelSearch: '搜索模型',
-      modelSmart: '智能',
-      modelSmartTitle: '智能模型编排',
-      modelSmartDesc: '后续可配置规划、检索、总结等不同阶段使用不同模型。当前先按所选模型执行。',
-      modelLoading: '正在拉取模型...',
-      modelLoadFailed: '模型列表拉取失败，已使用默认模型。',
-      modelSaved: '模型设置已保存。',
-      trashTitle: '论文回收站',
-      trashDesc: '误删除的论文可以恢复到原论文库。',
-      trashEmpty: '回收站为空。',
-      profileTitle: '个人中心',
-      profileDesc: '管理头像和账号安全设置。',
-      avatar: '头像',
-      uploadAvatar: '上传头像',
-      password: '新密码',
-      passwordHint: '至少 6 位',
-      updatePassword: '修改密码',
-      writingMemory: '写作记忆',
-      writingMemoryDesc: '记录 Agent 写作时应该遵守的学术偏好。',
-      memoryOpen: '管理记忆',
-      memoryTitle: '学术写作偏好',
-      memoryPlaceholder: '写下模型需要长期记住的写作偏好。你可以直接修改模型记录过的内容。',
-      memoryAdd: '保存记忆',
-      memoryEmpty: '还没有保存写作偏好。',
-      memorySaved: '写作记忆已保存。',
-      avatarSaved: '头像已更新。',
-      passwordSaved: '密码已更新。',
-      localOnly: '当前为本地登录模式，账号设置需要配置 Supabase。',
-    },
-    auth: {
-      title: '登录 ScholarX',
-      subtitle: '登录后可以进入 /scholarx，查看和管理你的论文库。',
-      email: '邮箱',
-      password: '密码',
-      passwordHint: '至少 6 位',
-      signIn: '登录',
-      signUp: '创建账号',
-      verifyTitle: '输入邮箱验证码',
-      verifyDesc: '我们已向你的邮箱发送验证码，请输入邮件里的 6 位数字。',
-      code: '验证码',
-      verify: '验证并进入',
-      resendCode: '重新发送验证码',
-      codeResent: '验证码已重新发送，请查看邮箱。',
-      authServiceBusy: '认证服务刚才无法连接数据库，请稍后重试或重新发送验证码。',
-      pleaseRegister: '该邮箱尚未注册，请先注册。',
-      pleaseFinishRegister: '该邮箱尚未完成注册，请先在注册页完成邮箱验证。',
-      noSupabase: '未配置 Supabase 前端密钥，暂时无法登录。',
-    },
-    modal: {
-      libraryTitle: '创建论文库',
-      libraryDesc: '本次搜索会保存为一个新的论文库。',
-      libraryName: '库名',
-      keyword: '关键词',
-      keywordHint: '例如 stock forecasting',
-      keywordHelp: '关键词规则',
-      keywordHelpItems: [
-        '普通输入：stock forecasting，按词匹配标题。',
-        '短语：\"stock forecasting\"，匹配连续短语。',
-        '并列：stock OR finance，匹配任一词。',
-        '组合：agent AND (stock OR portfolio OR finance)，必须包含 agent，且包含括号内任一词。',
-        '排除：stock -survey，包含 stock 且排除 survey。',
-        '同时包含：stock & prediction，Postgres 原生写法。',
-        '前缀：stock:*，匹配 stock / stocks / stocking 等词干或前缀。',
-      ],
-      venue: '期刊 / 会议',
-      venueHint: '例如 SIGIR、KDD、WWW、Nature',
-      scope: 'CCF / 期刊会议',
-      scopeHint: '输入 CCF A/B/C、ICLR、KDD、Nature',
-      scopeRankHint: '按 CCF 等级加入检索',
-      sourceKeyword: '关键词检索',
-      sourcePdf: 'PDF 上传',
-      sourceNatural: '你说我找',
-      sourceManual: '手动填写',
-      naturalPrompt: '描述你的研究需求',
-      naturalHint: '例如：我想找多模态检索方向近几年 CCF 论文',
-      naturalStart: '开始解析',
-      naturalScopeQuestion: 'CCF A/B/C 的范围可以吗？也可以继续加会议或删掉等级。',
-      naturalYearQuestion: '近三年的范围可以吗？',
-      naturalReady: '参数已确认，请确认生成的库名。',
-      naturalParsing: '正在解析需求...',
-      parsedKeyword: '解析关键词',
-      pdfFiles: 'PDF 文件',
-      pdfHint: '支持单个 PDF、多个 PDF 或 ZIP 压缩包',
-      yearFrom: '起始年',
-      yearTo: '结束年',
-      share: '共享给用户名或邮箱，多个用逗号分隔',
-      shareTitle: '共享论文库',
-      shareDesc: '输入用户邮箱，可自动补全；删除气泡即可取消共享。',
-      sharePlaceholder: '输入邮箱',
-      shareEmpty: '暂未共享给任何人',
-      continue: '下一步',
-      createSearch: '搜索并创建',
-      createFromPdf: '创建并上传',
-      addToLibrary: '添加到当前库',
-      searchToAdd: '搜索论文加入',
-      uploadToAdd: '上传 PDF 加入',
-      searchResults: '搜索结果',
-      selectedPapers: '已选择论文',
-      addSelected: '加入所选论文',
-      associateTitle: '手动关联 PDF',
-      associateDesc: '搜索 DBLP 库中的论文，把当前 PDF 绑定到正确条目。',
-      associateToPaper: '关联到这篇',
-      tagTitleAdd: '添加 Tag',
-      tagTitleEdit: '编辑 Tag',
-      tagDesc: 'description 会作为分类提示词保存。',
-      tagName: 'Tag 名，例如 stock',
-      tagPrompt: 'description，例如：和股票预测相关',
-      autoFolder: '自动移入同名子目录',
-      autoFolderHint: '勾选后，归入此 Tag 的论文会自动移动到同名子目录。',
-      folders: '子目录',
-      folderName: '子目录名，例如 llm+stock',
-      addFolder: '添加子目录',
-      addChildFolder: '添加下级目录',
-      updateLibrary: '保存论文库',
-      updateMetadata: '保存信息',
-      updateSearch: '更新检索',
-      createdAt: '创建于',
-      fileCount: '个文件',
-    },
-  },
-  en: {
-    common: {
-      language: 'English',
-      switchLanguage: '中',
-      home: 'Home',
-      demo: 'View Demo',
-      cancel: 'Cancel',
-      allRanks: 'All ranks',
-      dynamic: 'Dynamic',
-      static: 'Static',
-      save: 'Save',
-      add: 'Add',
-      search: 'Search',
-      signIn: 'Sign in',
-      signUp: 'Sign up',
-      signOut: 'Sign out',
-      resetLayout: 'Reset layout',
-      background: 'Run in background',
-      confirmDelete: 'Confirm delete',
-      backToWorkbench: 'Back to workbench',
-    },
-    brand: {
-      name: 'ScholarX Academy',
-      indexed: 'papers indexed',
-      fallback: 'research learning studio',
-    },
-    home: {
-      eyebrow: 'A research platform that keeps moving',
-      title: 'Turn DBLP search into a guided research course',
-      subtitle:
-        'Create paper libraries, track reading progress, organize topics with tags, and ask the agent for surveys, PDF Q&A, and LaTeX drafts.',
-      primary: 'Open ScholarX',
-      secondary: 'See flow',
-      navFeatures: 'Features',
-      navStories: 'Stories',
-      catalogTitle: 'Course catalog preview',
-      catalogMeta: 'Dynamic paper library',
-      catalogDesc: 'Generate a research track from keywords and refresh it after database updates.',
-      progressTitle: 'Progress tracking demo',
-      progressMeta: 'Papers, PDFs, and tags move together',
-      progressDesc: 'Organize reading status and topic clues like a focused course.',
-      courseA: 'Stock forecasting',
-      courseB: 'Multimodal retrieval',
-      courseC: 'LLM agents',
-      progressDone: 'Classified',
-      progressPdf: 'PDF parsed',
-      progressDraft: 'Survey draft',
-      testimonialTitle: 'Student testimonials',
-      testimonialOne: '"I shaped a survey outline in one afternoon."',
-      testimonialTwo: '"The tag column feels more useful than a bookmark folder."',
-      ctaTitle: 'Ready for your first research course?',
-      ctaDesc: 'Enter the demo, click Add Library, and create your first paper track from keywords.',
-      ctaButton: 'Open ScholarX',
-    },
-    workbench: {
-      eyebrow: 'Research course workspace',
-      title: 'Move through paper libraries like guided course tracks',
-      subtitle:
-        'Every search creates a library. Sync dynamic libraries, upload PDFs, tag papers, and ask the agent for surveys or LaTeX drafts.',
-      addLibrary: 'Add Library',
-      browseCatalog: 'Browse Catalog',
-      catalogTitle: 'Course Catalog',
-      startKeyword: 'Start with a keyword',
-      dynamicTrack: 'Refreshes after DBLP updates',
-      staticTrack: 'Keeps a one-time search snapshot',
-      progressDemo: 'Progress demo',
-      papersLoaded: 'papers loaded',
-      testimonialA: '"I mapped a survey outline before lunch."',
-      testimonialB: '"Tags finally made my literature review organized."',
-      catalogFallback: 'Paper catalog',
-      selected: 'selected',
-      tableSearch: 'Filter title / venue',
-      applyTableFilter: 'Apply table filter',
-      sync: 'Sync',
-      empty: 'Click Add Library on the left to create your first research course.',
-      creatingTitle: 'Searching papers',
-      creatingDesc: 'ScholarX is creating the library and matching DBLP plus CCF data. You can send it to the background.',
-      backgroundNotice: 'Library creation is running in the background. The list will refresh when it finishes.',
-      backHome: 'Back Home',
-      pageSize: 'Per page',
-      page: 'Page',
-      total: 'Total',
-      previous: 'Previous',
-      next: 'Next',
-      filters: 'Filters',
-      clearFilters: 'Clear',
-      download: 'Download',
-      downloadCsv: 'CSV',
-      downloadExcel: 'Excel',
-      exportCitations: 'Export',
-      exportBib: 'BibTeX (.bib)',
-      exportApa: 'APA (.txt)',
-      exportMla: 'MLA (.txt)',
-      exportGbt: 'GB/T 7714 (.txt)',
-      citationFetching: 'Fetching references',
-      citationReady: 'References ready',
-      citationRetry: 'Retry failed refs',
-      addPapers: 'Add papers',
-      papersMode: 'Papers',
-      filesMode: 'Files',
-      fileLibrary: 'File Library',
-      newMarkdown: 'New Markdown',
-      newFile: 'New file',
-      newFolder: 'New folder',
-      rename: 'Rename',
-      filesTab: 'Files',
-      outlineTab: 'Outline',
-      sourceMode: 'Source',
-      unsavedExit: 'This file has unsaved changes. Leave anyway?',
-      exportAll: 'Export',
-      saveFile: 'Save file',
-      exportFile: 'Export file',
-      fileSaved: 'File saved',
-      fileEmpty: 'No files yet. Ask the Agent to draft a review, or create a Markdown file.',
-      viewPdf: 'View PDF',
-      closePdf: 'Back',
-      translateSelection: 'Selection Translate',
-      translateSelectionOn: 'Selection Translate On',
-      translating: 'Translating...',
-      translation: 'Translation',
-      pdfLoading: 'Loading PDF...',
-      pdfLoadError: 'Failed to load PDF',
-      associatePaper: 'Associate paper',
-      indexedPrefix: 'Indexed ',
-      indexedSuffix: ' papers',
-      updatedAt: 'Updated',
-    },
-    library: {
-      add: 'Add Library',
-      empty: 'No libraries yet. Click the button above to begin.',
-      dynamic: 'Dynamic update',
-      static: 'Static snapshot',
-      delete: 'Delete library',
-      deleteConfirm: 'Delete this library? Library-paper links will be removed, but global paper data remains.',
-    },
-    table: {
-      paper: 'Paper',
-      abstract: 'Abstract',
-      authors: 'Authors',
-      details: 'Details',
-      detailsReadonly: 'Title, authors, year, and venue come from the paper index. Only abstract and PDF are editable.',
-      abstractPlaceholder: 'Add or correct the abstract manually',
-      abstractSaved: 'Abstract saved',
-      year: 'Year',
-      rank: 'Rank',
-      venue: 'Venue',
-      tagColumn: 'Tag column',
-      pdf: 'PDF',
-      noPdf: 'No PDF yet',
-      folder: 'Folder',
-      allFolders: 'All papers',
-      rootFolder: 'Root',
-      noFolder: 'Unfiled',
-      moveToFolder: 'Move',
-      moveToRoot: 'Move out of folder',
-      moveSuccess: 'Moved successfully',
-      copyToFolder: 'Copy',
-      copySuccess: 'Copied successfully',
-      selectAllLibrary: 'Select all filtered papers',
-      clearSelection: 'Clear selection',
-      chooseTag: 'Choose tag',
-      allTags: 'All tags',
-      noTags: 'No tags yet',
-      noTagDefinitions: 'Add tags from the column header first',
-      addTag: 'Add tag',
-      editTag: 'Edit tag',
-      enrich: 'Enrich details online',
-      uploadPdf: 'Upload PDF',
-      confirmPdfUpload: 'Confirm PDF upload',
-      confirmPdfUploadDesc: 'Review the paper and uploaded PDF details before confirming the attachment.',
-      currentPaper: 'Current paper',
-      uploadedPdf: 'Uploaded PDF',
-      similarity: 'Similarity',
-      storeAnyway: 'Confirm upload',
-      uploadPdfZip: 'Upload PDF / ZIP',
-      associate: 'Associate',
-      relink: 'Relink',
-      renamePaper: 'Rename paper',
-      renamePaperDesc: 'Only changes the display title of this unmatched uploaded paper.',
-      renameSuccess: 'Paper title updated',
-      remove: 'Remove from library',
-      restore: 'Restore',
-      deleteFolder: 'Delete folder',
-      deleteFolderConfirm: 'Delete this folder and its child folders? Papers inside will move to the parent folder.',
-      sortAsc: 'Asc',
-      sortDesc: 'Desc',
-      titleFilter: 'Title contains',
-      venueFilter: 'Venue contains',
-      yearFrom: 'Year from',
-      yearTo: 'Year to',
-    },
-    agent: {
-      title: 'Agent',
-      newChat: 'New Chat',
-      history: 'History',
-      deleteChat: 'Delete chat',
-      settings: 'Model Settings',
-      baseUrl: 'Base URL',
-      apiKey: 'API Key',
-      model: 'Model',
-      saveSettings: 'Save Settings',
-      settingsSaved: 'Settings are saved locally in this browser.',
-      skills: 'Skills',
-      install: 'Install',
-      uninstall: 'Uninstall',
-      installed: 'Installed',
-      enable: 'Enable',
-      skillEmpty: 'No skills available yet.',
-      skillActivePrefix: '',
-      skillActiveSuffix: ' skills active',
-      selectedPrefix: 'Using ',
-      selectedSuffix: ' selected papers',
-      context: 'Using current library context',
-      placeholder: 'Ask for surveys, classification, PDF answers, or LaTeX output',
-      send: 'Send',
-      resend: 'Resend',
-      thinking: 'Thinking',
-      thinkingDone: 'Thought complete',
-      stop: 'Stop',
-      stopped: 'Generation stopped.',
-      requestFailed: 'Model request failed: ',
-      references: 'Referenced papers',
-      evidence: 'Evidence',
-      process: 'Process',
-      emptyLibraryHistory: 'No chats yet',
-      unassignedHistory: 'Unassigned',
-      greeting: 'Select papers and I can help summarize methods, read PDF content, and draft LaTeX from the current library.',
-      pdfParsed: 'Parsed PDF: ',
-      pdfEmpty: 'No text was extracted.',
-    },
-    user: {
-      profile: 'Profile',
-      trash: 'Recycle bin',
-      modelSelect: 'Select model',
-      modelTitle: 'Select model',
-      modelDesc: 'Fetch available models from the current endpoint. Smart mode will route tasks to different models later.',
-      modelList: 'Models',
-      modelSearch: 'Search models',
-      modelSmart: 'Smart',
-      modelSmartTitle: 'Smart model routing',
-      modelSmartDesc: 'Planning, retrieval, and summarization can use different models later. For now, ScholarX uses the selected model.',
-      modelLoading: 'Loading models...',
-      modelLoadFailed: 'Failed to load models. The default model is used.',
-      modelSaved: 'Model settings saved.',
-      trashTitle: 'Paper recycle bin',
-      trashDesc: 'Restore accidentally removed papers to their original libraries.',
-      trashEmpty: 'The recycle bin is empty.',
-      profileTitle: 'Profile',
-      profileDesc: 'Manage your avatar and account security settings.',
-      avatar: 'Avatar',
-      uploadAvatar: 'Upload avatar',
-      password: 'New password',
-      passwordHint: 'At least 6 characters',
-      updatePassword: 'Update password',
-      writingMemory: 'Writing memory',
-      writingMemoryDesc: 'Store academic writing preferences for the Agent.',
-      memoryOpen: 'Manage memory',
-      memoryTitle: 'Academic writing preferences',
-      memoryPlaceholder: 'Write the long-term writing preferences the model should remember. You can edit model-recorded content directly.',
-      memoryAdd: 'Save memory',
-      memoryEmpty: 'No writing preferences saved yet.',
-      memorySaved: 'Writing memory saved.',
-      avatarSaved: 'Avatar updated.',
-      passwordSaved: 'Password updated.',
-      localOnly: 'Account settings require Supabase authentication.',
-    },
-    auth: {
-      title: 'Sign in to ScholarX',
-      subtitle: 'Sign in to access /scholarx and manage your paper libraries.',
-      email: 'Email',
-      password: 'Password',
-      passwordHint: 'At least 6 characters',
-      signIn: 'Sign in',
-      signUp: 'Create account',
-      verifyTitle: 'Enter email code',
-      verifyDesc: 'We sent a verification code to your email. Enter the 6-digit code.',
-      code: 'Code',
-      verify: 'Verify and enter',
-      resendCode: 'Resend code',
-      codeResent: 'A new code was sent. Please check your email.',
-      authServiceBusy: 'Auth could not reach the database. Please retry or resend the code.',
-      pleaseRegister: 'This email is not registered. Please sign up first.',
-      pleaseFinishRegister: 'This email has not finished sign-up. Please verify it from the sign-up tab.',
-      noSupabase: 'Supabase frontend key is missing, so sign-in is unavailable.',
-    },
-    modal: {
-      libraryTitle: 'Create Library',
-      libraryDesc: 'This search will be saved as a new paper library.',
-      libraryName: 'Library name',
-      keyword: 'Keyword',
-      keywordHint: 'e.g. stock forecasting',
-      keywordHelp: 'Keyword rules',
-      keywordHelpItems: [
-        'Plain input: stock forecasting searches title terms.',
-        'Phrase: "stock forecasting" matches adjacent words.',
-        'Either term: stock OR finance.',
-        'Combined: agent AND (stock OR portfolio OR finance) requires agent plus any term in parentheses.',
-        'Exclude: stock -survey.',
-        'Must include both: stock & prediction, PostgreSQL tsquery style.',
-        'Prefix: stock:* matches stock / stocks / stocking-style prefixes.',
-      ],
-      venue: 'Journal / Conference',
-      venueHint: 'e.g. SIGIR, KDD, WWW, Nature',
-      scope: 'CCF / Venue',
-      scopeHint: 'Type CCF A/B/C, ICLR, KDD, Nature',
-      scopeRankHint: 'Add papers by CCF rank',
-      sourceKeyword: 'Keyword search',
-      sourcePdf: 'PDF upload',
-      sourceNatural: 'Natural language guide',
-      sourceManual: 'Manual form',
-      naturalPrompt: 'Describe your research need',
-      naturalHint: 'e.g. Find recent CCF papers about multimodal retrieval',
-      naturalStart: 'Parse need',
-      naturalScopeQuestion: 'Is CCF A/B/C a good scope? You can add venues or remove ranks.',
-      naturalYearQuestion: 'Is the recent three-year range acceptable?',
-      naturalReady: 'Parameters are ready. Confirm the generated library name.',
-      naturalParsing: 'Parsing...',
-      parsedKeyword: 'Parsed keyword',
-      pdfFiles: 'PDF files',
-      pdfHint: 'Supports one PDF, multiple PDFs, or a ZIP archive',
-      yearFrom: 'Year from',
-      yearTo: 'Year to',
-      share: 'Share with usernames or emails, separated by commas',
-      shareTitle: 'Share Library',
-      shareDesc: 'Type user emails with autocomplete; remove chips to stop sharing.',
-      sharePlaceholder: 'Type email',
-      shareEmpty: 'Not shared with anyone yet',
-      continue: 'Next',
-      createSearch: 'Search and Create',
-      createFromPdf: 'Create and Upload',
-      addToLibrary: 'Add to current library',
-      searchToAdd: 'Search papers',
-      uploadToAdd: 'Upload PDFs',
-      searchResults: 'Search results',
-      selectedPapers: 'selected papers',
-      addSelected: 'Add selected papers',
-      associateTitle: 'Associate PDF manually',
-      associateDesc: 'Search the DBLP library and bind this PDF to the correct paper.',
-      associateToPaper: 'Associate to paper',
-      tagTitleAdd: 'Add Tag',
-      tagTitleEdit: 'Edit Tag',
-      tagDesc: 'The description is saved as a classification prompt.',
-      tagName: 'Tag name, e.g. stock',
-      tagPrompt: 'Description, e.g. related to stock prediction',
-      autoFolder: 'Move to matching folder automatically',
-      autoFolderHint: 'Papers assigned to this tag will move into a folder with the same name.',
-      folders: 'Folders',
-      folderName: 'Folder name, e.g. llm+stock',
-      addFolder: 'Add folder',
-      addChildFolder: 'Add child folder',
-      updateLibrary: 'Save library',
-      updateMetadata: 'Save info',
-      updateSearch: 'Refresh search',
-      createdAt: 'Created',
-      fileCount: 'files',
-    },
-  },
-};
-
-async function api(path, options = {}) {
-  const response = await fetch(`${API}${path}`, {
-    headers: options.body instanceof FormData ? undefined : { 'Content-Type': 'application/json' },
-    ...options,
-    body: options.body instanceof FormData ? options.body : options.body ? JSON.stringify(options.body) : undefined,
-  });
-  const contentType = response.headers.get('content-type') || '';
-  const isJson = contentType.includes('application/json');
-  const data = isJson ? await response.json() : { error: await response.text() };
-  if (!response.ok) {
-    const fallback = response.status === 502
-      ? '后端服务正在重启或暂时不可达，请稍后重试。'
-      : response.status === 413
-        ? '上传文件过大，请减小文件或调整上传限制。'
-        : '请求失败';
-    throw new Error(isJson ? (data.error || fallback) : fallback);
-  }
-  return data;
-}
-
-async function downloadApiFile(path, options = {}, fallbackName = 'scholarx-export.txt') {
-  const response = await fetch(`${API}${path}`, {
-    headers: options.body instanceof FormData ? undefined : { 'Content-Type': 'application/json' },
-    ...options,
-    body: options.body instanceof FormData ? options.body : options.body ? JSON.stringify(options.body) : undefined,
-  });
-  if (!response.ok) {
-    let message = '下载失败';
-    try {
-      const data = await response.json();
-      message = data.error || message;
-    } catch {
-      // Keep fallback message.
-    }
-    throw new Error(message);
-  }
-  const blob = await response.blob();
-  const disposition = response.headers.get('content-disposition') || '';
-  const filename = decodeURIComponent(disposition.match(/filename="?([^"]+)"?/)?.[1] || fallbackName);
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
-
-function parseSseBlock(block) {
-  const lines = block.split('\n');
-  let event = 'message';
-  const data = [];
-  lines.forEach((line) => {
-    if (line.startsWith('event:')) event = line.slice(6).trim();
-    if (line.startsWith('data:')) data.push(line.slice(5).trim());
-  });
-  if (!data.length) return null;
-  return { event, data: JSON.parse(data.join('\n')) };
-}
-
-async function streamApi(path, payload, onEvent, options = {}) {
-  const response = await fetch(`${API}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-    signal: options.signal,
-  });
-  if (!response.ok || !response.body) {
-    const contentType = response.headers.get('content-type') || '';
-    const data = contentType.includes('application/json') ? await response.json() : { error: await response.text() };
-    throw new Error(data.error || '请求失败');
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const blocks = buffer.split('\n\n');
-    buffer = blocks.pop() || '';
-    blocks.forEach((block) => {
-      const parsed = parseSseBlock(block.trim());
-      if (parsed) onEvent(parsed.event, parsed.data);
-    });
-  }
-}
-
-function emptyFilters() {
-  return { keyword: '', venue: '', venues: [], year_from: '2023', year_to: String(new Date().getFullYear()), rank: '', ranks: [], folders: [] };
-}
-
-const DEFAULT_TABLE_SORTS = [
-  { column: 'rank', dir: 'asc' },
-  { column: 'year', dir: 'desc' },
-];
-
-const TABLE_SORT_DEFAULT_DIR = {
-  title: 'asc',
-  year: 'desc',
-  rank: 'asc',
-  venue: 'asc',
-  added_at: 'desc',
-};
-
-function normalizeTableSorts(filters = {}) {
-  const raw = Array.isArray(filters) ? filters : filters.sorts;
-  let items = [];
-  if (Array.isArray(raw)) {
-    items = raw;
-  } else if (filters.sort_by) {
-    items = [{ column: filters.sort_by, dir: filters.sort_dir === 'asc' ? 'asc' : 'desc' }];
-  } else {
-    items = DEFAULT_TABLE_SORTS;
-  }
-  const seen = new Set();
-  return items
-    .map((item) => ({
-      column: String(item.column || '').trim(),
-      dir: item.dir === 'desc' ? 'desc' : 'asc',
-    }))
-    .filter((item) => {
-      if (!item.column || seen.has(item.column)) return false;
-      seen.add(item.column);
-      return true;
-    });
-}
-
-function serializeTableSorts(filters = {}) {
-  const sorts = normalizeTableSorts(filters);
-  return sorts.length ? sorts.map((item) => `${item.column}:${item.dir}`).join(',') : 'none';
-}
-
-function primaryTableSort(filters = {}) {
-  return normalizeTableSorts(filters)[0] || { column: '', dir: '' };
-}
-
-function toggleTableSort(filters, column) {
-  const sorts = normalizeTableSorts(filters);
-  const defaultDir = TABLE_SORT_DEFAULT_DIR[column] || 'asc';
-  const oppositeDir = defaultDir === 'asc' ? 'desc' : 'asc';
-  const index = sorts.findIndex((item) => item.column === column);
-  let nextSorts = sorts;
-  if (index < 0) {
-    nextSorts = [...sorts, { column, dir: defaultDir }];
-  } else if (sorts[index].dir === defaultDir) {
-    nextSorts = sorts.map((item, itemIndex) => (itemIndex === index ? { ...item, dir: oppositeDir } : item));
-  } else {
-    nextSorts = sorts.filter((_, itemIndex) => itemIndex !== index);
-  }
-  const primary = nextSorts[0] || { column: '', dir: '' };
-  return {
-    ...filters,
-    sorts: nextSorts,
-    sort_by: primary.column,
-    sort_dir: primary.dir,
-    page: 1,
-  };
-}
-
-function emptyTableFilters() {
-  const sorts = DEFAULT_TABLE_SORTS.map((item) => ({ ...item }));
-  return {
-    keyword: '',
-    venue: '',
-    venues: [],
-    year_from: '',
-    year_to: '',
-    rank: '',
-    ranks: [],
-    status: '',
-    tag: '',
-    folder: '',
-    page: 1,
-    page_size: 25,
-    sorts,
-    sort_by: sorts[0].column,
-    sort_dir: sorts[0].dir,
-  };
-}
-
-function normalizeRanks(value, fallback = '') {
-  const values = Array.isArray(value) ? value : String(value || fallback || '').split(',');
-  return [...new Set(values
-    .flatMap((rank) => String(rank).split(/[，,]/))
-    .map((rank) => rank.trim().toUpperCase().replace(/^CCF[\s_-]*/, ''))
-    .map((rank) => rank.slice(0, 1))
-    .filter((rank) => ['A', 'B', 'C'].includes(rank)))];
-}
-
-function parseRankToken(value) {
-  const token = String(value || '').trim().toUpperCase().replace(/^CCF[\s_-]*/, '');
-  return ['A', 'B', 'C'].includes(token) ? token : '';
-}
-
-function splitScopeDraft(value) {
-  return String(value || '')
-    .split(',')
-    .flatMap((item) => item.split('，'))
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function rankParam(filters) {
-  return normalizeRanks(filters.ranks, filters.rank).join(',');
-}
-
-function normalizeVenues(value, fallback = '') {
-  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
-  return String(value || fallback || '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function venueParam(filters) {
-  return normalizeVenues(filters.venues, filters.venue).join(',');
-}
-
-function hasScopeFilter(filters) {
-  return normalizeRanks(filters.ranks, filters.rank).length > 0 || normalizeVenues(filters.venues, filters.venue).length > 0;
-}
 
 function createInitialChat(text = COPY.zh, library = null) {
   return {
@@ -1017,41 +266,6 @@ function createInitialChat(text = COPY.zh, library = null) {
     libraryName: library?.name || '',
     messages: [],
   };
-}
-
-function hasUserMessages(chat) {
-  return (chat.messages || []).some((message) => message.role === 'user');
-}
-
-function mergeChatTrace(existing = [], incoming = []) {
-  const seen = new Set();
-  return [...existing, ...incoming].filter((item) => {
-    const key = `${item.stage || ''}|${item.title || ''}|${item.detail || ''}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function chatLibraryId(chat) {
-  return chat?.libraryId ?? null;
-}
-
-function chatBelongsToLibrary(chat, libraryId) {
-  return chatLibraryId(chat) === (libraryId ?? null);
-}
-
-function useClickOutside(ref, enabled, onOutside) {
-  useEffect(() => {
-    if (!enabled) return undefined;
-    function handlePointerDown(event) {
-      const refs = Array.isArray(ref) ? ref : [ref];
-      if (refs.some((item) => item.current?.contains(event.target))) return;
-      onOutside();
-    }
-    document.addEventListener('pointerdown', handlePointerDown);
-    return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, [enabled, onOutside, ref]);
 }
 
 function viewFromPath(pathname = window.location.pathname) {
@@ -1079,138 +293,6 @@ function migrateLegacyStorageKeys() {
 
 migrateLegacyStorageKeys();
 
-function normalizeFolderPath(path) {
-  return String(path || '')
-    .split('/')
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .join('/');
-}
-
-const ROOT_FOLDER_MARKER = '__root__';
-
-function isInvalidModelId(modelId) {
-  const value = String(modelId || '').trim();
-  return !value || value.includes('@') || /\s/.test(value);
-}
-
-function modelFamily(modelId) {
-  const value = String(modelId || '').trim();
-  const prefix = value.split(/[-_.]/)[0] || 'other';
-  return prefix.toLowerCase();
-}
-
-function groupModels(models = []) {
-  const groups = new Map();
-  models.forEach((model) => {
-    const family = modelFamily(model.id || model.name);
-    if (!groups.has(family)) groups.set(family, []);
-    groups.get(family).push(model);
-  });
-  return [...groups.entries()].map(([family, items]) => ({ family, items }));
-}
-
-function initialLlmSettings() {
-  try {
-    const saved = JSON.parse(localStorage.getItem('scholarx.llmSettings') || '{}');
-    return {
-      mode: 'single',
-      ...saved,
-      protocol: '',
-      model: isInvalidModelId(saved.model) ? '' : saved.model,
-    };
-  } catch {
-    return { mode: 'single', model: '', protocol: '' };
-  }
-}
-
-function folderMarker(path) {
-  return normalizeFolderPath(path) || ROOT_FOLDER_MARKER;
-}
-
-function paperFolderMarkers(paper) {
-  const columns = paper?.user_columns_json || {};
-  const markers = new Set();
-  const primary = normalizeFolderPath(columns.folder);
-  if (primary) markers.add(primary);
-  (Array.isArray(columns.folders) ? columns.folders : []).forEach((folder) => {
-    const marker = folder === ROOT_FOLDER_MARKER ? ROOT_FOLDER_MARKER : normalizeFolderPath(folder);
-    if (marker) markers.add(marker);
-  });
-  if (!primary || markers.has(ROOT_FOLDER_MARKER)) markers.add(ROOT_FOLDER_MARKER);
-  return markers;
-}
-
-function folderLeaf(path) {
-  return normalizeFolderPath(path).split('/').pop() || '';
-}
-
-function isUnmatchedUploadedPaper(paper) {
-  return String(paper?.dblp_key || '').startsWith('upload/');
-}
-
-function paperMetadata(paper) {
-  return paper?.metadata_json && typeof paper.metadata_json === 'object' ? paper.metadata_json : {};
-}
-
-function displayPaperTitle(paper) {
-  const metadata = paperMetadata(paper);
-  const extractedTitle = metadata.extracted_title || metadata.pdf_bibliography?.title;
-  const originalFilename = metadata.original_filename || metadata.uploaded_pdf || '';
-  const filenameTitle = originalFilename ? originalFilename.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').trim() : '';
-  return paper?.title || extractedTitle || filenameTitle || 'Untitled PDF';
-}
-
-function displayVenue(paper) {
-  const main = paper?.main_venue_abbr || paper?.venue_abbr || paper?.main_venue_name || '';
-  const detail = paper?.venue_name || paper?.venue_abbr || paper?.main_venue_name || main;
-  return {
-    label: main || detail || '-',
-    title: detail && detail !== main ? detail : '',
-  };
-}
-
-function displayPaperAbstract(paper) {
-  return String(paper?.abstract || '').replace(/\s+/g, ' ').trim();
-}
-
-function folderAncestors(path) {
-  const parts = normalizeFolderPath(path).split('/').filter(Boolean);
-  return parts.slice(0, -1).map((_part, index) => parts.slice(0, index + 1).join('/'));
-}
-
-function buildFolderTree(paths = []) {
-  const roots = [];
-  const byPath = new Map();
-  paths.map(normalizeFolderPath).filter(Boolean).forEach((path) => {
-    const parts = path.split('/');
-    parts.forEach((_part, index) => {
-      const currentPath = parts.slice(0, index + 1).join('/');
-      if (byPath.has(currentPath)) return;
-      const node = { path: currentPath, name: parts[index], children: [] };
-      byPath.set(currentPath, node);
-      const parentPath = parts.slice(0, index).join('/');
-      if (parentPath) byPath.get(parentPath).children.push(node);
-      else roots.push(node);
-    });
-  });
-  return roots;
-}
-
-function formatDateOnly(value) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date);
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
 function App() {
   const [view, setView] = useState(() => viewFromPath());
   const [locale, setLocaleState] = useState(() => localStorage.getItem('scholarx.locale') || 'zh');
@@ -1222,6 +304,10 @@ function App() {
   const [session, setSession] = useState(null);
   const [authReady, setAuthReady] = useState(!supabase);
   const [libraries, setLibraries] = useState([]);
+  const initialLayoutStateRef = useRef(null);
+  if (!initialLayoutStateRef.current) {
+    initialLayoutStateRef.current = readStoredLayoutState();
+  }
   const [libraryOrder, setLibraryOrder] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('scholarx.libraryOrder') || '[]');
@@ -1232,21 +318,25 @@ function App() {
   const [activeLibrary, setActiveLibrary] = useState(null);
   const [libraryPapers, setLibraryPapers] = useState([]);
   const [libraryFiles, setLibraryFiles] = useState([]);
-  const [fileWorkbenchOpen, setFileWorkbenchOpen] = useState(false);
+  const [fileWorkbenchOpen, setFileWorkbenchOpen] = useState(() => initialLayoutStateRef.current.filesOpen);
   const [activeFile, setActiveFile] = useState(null);
   const [activeFileDraft, setActiveFileDraft] = useState('');
   const [selectedFileFolderId, setSelectedFileFolderId] = useState(null);
   const [expandedFileFolders, setExpandedFileFolders] = useState(new Set());
   const [fileSidebarMode, setFileSidebarMode] = useState('files');
-  const [fileSidebarCollapsed, setFileSidebarCollapsed] = useState(false);
+  const [fileSidebarCollapsed, setFileSidebarCollapsed] = useState(() => initialLayoutStateRef.current.fileSidebarCollapsed);
   const [fileSourceMode, setFileSourceMode] = useState(false);
   const [fileContextMenu, setFileContextMenu] = useState(null);
   const [renamingFileId, setRenamingFileId] = useState(null);
   const [renamingFileName, setRenamingFileName] = useState('');
+  const [writingWizard, setWritingWizard] = useState(null);
+  const [aiFileEditing, setAiFileEditing] = useState(false);
   const fileEditorRef = useRef(null);
   const [paperTotal, setPaperTotal] = useState(0);
   const paperTableWrapRef = useRef(null);
-  const pdfReturnPaperIdRef = useRef(null);
+  const pdfReturnListStateRef = useRef(null);
+  const pendingPaperScrollRestoreRef = useRef(null);
+  const paperScrollSaveFrameRef = useRef(0);
   const [libraryTotals, setLibraryTotals] = useState({});
   const [filters, setFilters] = useState(emptyFilters());
   const [tableFilters, setTableFilters] = useState(emptyTableFilters());
@@ -1272,11 +362,12 @@ function App() {
   const [translationPopup, setTranslationPopup] = useState(null);
   const translationRequestRef = useRef(0);
   const translationPopupRef = useRef(null);
+  const translationRangeRef = useRef(null);
   const lastTranslatedSelectionRef = useRef('');
+  const pdfViewerRef = useRef(null);
   const [pendingPdfUpload, setPendingPdfUpload] = useState(null);
   const [associatingPaper, setAssociatingPaper] = useState(null);
   const [detailPaper, setDetailPaper] = useState(null);
-  const [detailAbstract, setDetailAbstract] = useState('');
   const [renamingPaper, setRenamingPaper] = useState(null);
   const [renamingPaperTitle, setRenamingPaperTitle] = useState('');
   const [libraryCreateStatus, setLibraryCreateStatus] = useState(null);
@@ -1302,22 +393,16 @@ function App() {
   const [writingPreferenceRules, setWritingPreferenceRules] = useState({});
   const [contextMenu, setContextMenu] = useState(null);
   const chatAbortControllerRef = useRef(null);
+  const inlineCompletionAbortRef = useRef(null);
+  const layoutMenuRef = useRef(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const [editingMessageDraft, setEditingMessageDraft] = useState('');
-  const [columns, setColumns] = useState(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('scholarx.columns') || '{"left":1.15,"middle":4,"right":2}');
-      if (stored.left === 1 && stored.middle === 4 && stored.right === 2) {
-        return { left: 1.15, middle: 4, right: 2 };
-      }
-      return stored;
-    } catch {
-      return { left: 1.15, middle: 4, right: 2 };
-    }
-  });
-  const [leftPaneCollapsed, setLeftPaneCollapsed] = useState(false);
-  const [rightPaneCollapsed, setRightPaneCollapsed] = useState(false);
+  const [layoutPreset, setLayoutPreset] = useState(() => initialLayoutStateRef.current.preset || 'default');
+  const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
+  const [columns, setColumns] = useState(() => initialLayoutStateRef.current.columns || DEFAULT_COLUMNS);
+  const [leftPaneCollapsed, setLeftPaneCollapsed] = useState(() => initialLayoutStateRef.current.leftCollapsed);
+  const [rightPaneCollapsed, setRightPaneCollapsed] = useState(() => initialLayoutStateRef.current.rightCollapsed);
   const [chatSessions, setChatSessions] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('scholarx.chatSessions') || '[]');
@@ -1350,6 +435,11 @@ function App() {
     () => activeSkillIds.filter((skillId) => installedSkills.some((skill) => skill.id === skillId)),
     [activeSkillIds, installedSkills],
   );
+  const layoutOptions = [
+    { id: 'default', label: text.common.layoutDefault, description: text.common.layoutDefaultDesc },
+    { id: 'reading', label: text.common.layoutReading, description: text.common.layoutReadingDesc },
+    { id: 'immersive', label: text.common.layoutImmersive, description: text.common.layoutImmersiveDesc },
+  ];
 
   function updateActiveChat(updater) {
     setChatSessions((sessions) => sessions.map((chat) => (
@@ -1377,7 +467,17 @@ function App() {
         return next;
       });
       setError('');
-      if (!activeLibrary && data.libraries.length) setActiveLibrary(data.libraries[0]);
+      if (!activeLibrary && data.libraries.length) {
+        const storedLibraryId = readStoredActiveLibraryId();
+        const nextLibrary = data.libraries.find((library) => String(library.id) === String(storedLibraryId))
+          || data.libraries[0];
+        const storedViewState = readStoredPaperViewState(nextLibrary.id);
+        if (storedViewState?.filters) {
+          setTableFilters(storedViewState.filters);
+          pendingPaperScrollRestoreRef.current = storedViewState.scrollTop || 0;
+        }
+        setActiveLibrary(nextLibrary);
+      }
     } catch (err) {
       setError(err.message);
     }
@@ -1441,6 +541,42 @@ function App() {
     const files = data.files || [];
     setLibraryFiles(files);
     return files;
+  }
+
+  function schedulePaperScrollRestore(scrollTop) {
+    const targetTop = Math.max(0, Number(scrollTop) || 0);
+    pendingPaperScrollRestoreRef.current = targetTop;
+    const restore = () => {
+      const wrap = paperTableWrapRef.current;
+      if (!wrap) return;
+      wrap.scrollTop = Math.min(targetTop, Math.max(0, wrap.scrollHeight - wrap.clientHeight));
+      pendingPaperScrollRestoreRef.current = null;
+    };
+    requestAnimationFrame(() => {
+      restore();
+      window.setTimeout(restore, 40);
+      window.setTimeout(restore, 160);
+    });
+  }
+
+  function snapshotPaperViewState(libraryId = activeLibrary?.id) {
+    if (!libraryId) return null;
+    const scrollTop = paperTableWrapRef.current?.scrollTop ?? readStoredPaperViewState(libraryId)?.scrollTop ?? 0;
+    return {
+      libraryId,
+      filters: tableFilters,
+      scrollTop,
+    };
+  }
+
+  function handlePaperTableScroll(event) {
+    if (!activeLibrary?.id || pdfViewer) return;
+    const scrollTop = event.currentTarget.scrollTop;
+    if (paperScrollSaveFrameRef.current) cancelAnimationFrame(paperScrollSaveFrameRef.current);
+    paperScrollSaveFrameRef.current = requestAnimationFrame(() => {
+      paperScrollSaveFrameRef.current = 0;
+      writeStoredPaperViewState(activeLibrary.id, { filters: tableFilters, scrollTop });
+    });
   }
 
   function fileDraftKey(fileId = activeFile?.id) {
@@ -1533,6 +669,26 @@ function App() {
   }, [activeLibrary?.id, tableFilters.page, tableFilters.page_size, tableSortKey]);
 
   useEffect(() => {
+    if (!activeLibrary?.id || pdfViewer) return;
+    const storedViewState = readStoredPaperViewState(activeLibrary.id);
+    const targetTop = pendingPaperScrollRestoreRef.current ?? storedViewState?.scrollTop ?? 0;
+    schedulePaperScrollRestore(targetTop);
+  }, [activeLibrary?.id, libraryPapers.length, paperTotal, pdfViewer]);
+
+  useEffect(() => {
+    if (!activeLibrary?.id) return;
+    const storedScrollTop = readStoredPaperViewState(activeLibrary.id)?.scrollTop || 0;
+    writeStoredPaperViewState(activeLibrary.id, {
+      filters: tableFilters,
+      scrollTop: paperTableWrapRef.current?.scrollTop ?? storedScrollTop,
+    });
+  }, [activeLibrary?.id, tableFilters]);
+
+  useEffect(() => () => {
+    if (paperScrollSaveFrameRef.current) cancelAnimationFrame(paperScrollSaveFrameRef.current);
+  }, []);
+
+  useEffect(() => {
     if (!activeLibrary?.id) {
       localStorage.removeItem('scholarx.activeLibrary');
       return;
@@ -1587,6 +743,18 @@ function App() {
   }, [columns]);
 
   useEffect(() => {
+    localStorage.setItem('scholarx.layoutPreset', layoutPreset);
+    localStorage.setItem('scholarx.layoutState', JSON.stringify({
+      preset: layoutPreset,
+      columns,
+      leftCollapsed: leftPaneCollapsed,
+      rightCollapsed: rightPaneCollapsed,
+      filesOpen: fileWorkbenchOpen,
+      fileSidebarCollapsed,
+    }));
+  }, [layoutPreset, columns, leftPaneCollapsed, rightPaneCollapsed, fileWorkbenchOpen, fileSidebarCollapsed]);
+
+  useEffect(() => {
     localStorage.setItem('scholarx.libraryOrder', JSON.stringify(libraryOrder));
   }, [libraryOrder]);
 
@@ -1626,11 +794,47 @@ function App() {
 
   useEffect(() => {
     setTranslationPopup(null);
+    translationRangeRef.current = null;
+    lastTranslatedSelectionRef.current = '';
   }, [pdfViewer?.paperId, pdfViewer?.url]);
 
   useEffect(() => {
     translationPopupRef.current = translationPopup;
   }, [translationPopup]);
+
+  function pdfElementFromNode(node) {
+    const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+    return element?.closest?.('.pdf-js-text-layer') || null;
+  }
+
+  function isPdfTextRange(range) {
+    if (!range) return false;
+    const startLayer = pdfElementFromNode(range.startContainer);
+    const endLayer = pdfElementFromNode(range.endContainer);
+    return Boolean(startLayer && endLayer && pdfViewerRef.current?.contains(startLayer) && pdfViewerRef.current?.contains(endLayer));
+  }
+
+  function pdfPopupPositionFromRange(range) {
+    if (!range || !isPdfTextRange(range)) return null;
+    const rect = range.getBoundingClientRect();
+    const viewerRect = pdfViewerRef.current?.getBoundingClientRect();
+    if (!viewerRect || !rect || rect.width <= 0 || rect.height <= 0) return null;
+    const outside = rect.bottom < viewerRect.top
+      || rect.top > viewerRect.bottom
+      || rect.right < viewerRect.left
+      || rect.left > viewerRect.right;
+    if (outside) return null;
+    const popupWidth = 320;
+    const margin = 10;
+    const minX = viewerRect.left + margin;
+    const maxX = Math.max(minX, viewerRect.right - popupWidth - margin);
+    const x = Math.min(Math.max(rect.left + rect.width / 2 - popupWidth / 2, minX), maxX);
+    const belowY = rect.bottom + 8;
+    const y = belowY < viewerRect.bottom - 76
+      ? belowY
+      : Math.max(viewerRect.top + margin, rect.top - 18);
+    return { x, y };
+  }
 
   useEffect(() => {
     if (!pdfViewer || !pdfTranslateEnabled) return undefined;
@@ -1645,15 +849,17 @@ function App() {
         if (anchorElement?.closest?.('.pdf-translation-popup')) return;
         const selectedText = String(selection?.toString() || '').trim();
         if (selectedText.length < 2) return;
-        if (selectedText === lastTranslatedSelectionRef.current && translationPopupRef.current) return;
         const range = selection.rangeCount ? selection.getRangeAt(0) : null;
-        const rect = range?.getBoundingClientRect();
-        const maxX = Math.max(16, window.innerWidth - 320);
+        if (!isPdfTextRange(range)) return;
+        const position = pdfPopupPositionFromRange(range);
+        if (!position) return;
+        translationRangeRef.current = range.cloneRange();
+        if (selectedText === lastTranslatedSelectionRef.current && translationPopupRef.current) {
+          setTranslationPopup((current) => current ? { ...current, ...position } : current);
+          return;
+        }
         lastTranslatedSelectionRef.current = selectedText;
-        translatePdfText(selectedText, rect ? {
-          x: Math.min(Math.max(rect.left + rect.width / 2 - 150, 16), maxX),
-          y: Math.min(Math.max(rect.bottom + 8, 74), window.innerHeight - 220),
-        } : null);
+        translatePdfText(selectedText, position);
       }, 80);
     };
     document.addEventListener('mouseup', handleSelection);
@@ -1664,6 +870,29 @@ function App() {
       document.removeEventListener('keyup', handleSelection);
     };
   }, [pdfViewer, pdfTranslateEnabled, locale]);
+
+  useEffect(() => {
+    if (!pdfViewer || !translationPopup) return undefined;
+    let frame = 0;
+    const updatePopupPosition = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const position = pdfPopupPositionFromRange(translationRangeRef.current);
+        if (!position) {
+          clearPdfTranslationPopup({ keepSelection: true });
+          return;
+        }
+        setTranslationPopup((current) => current ? { ...current, ...position } : current);
+      });
+    };
+    document.addEventListener('scroll', updatePopupPosition, true);
+    window.addEventListener('resize', updatePopupPosition);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener('scroll', updatePopupPosition, true);
+      window.removeEventListener('resize', updatePopupPosition);
+    };
+  }, [pdfViewer, translationPopup]);
 
   const selectedIds = [...selected];
   const selectedKey = selectedIds.join(',');
@@ -1744,6 +973,7 @@ function App() {
 
   useClickOutside(userMenuRef, userMenuOpen, () => setUserMenuOpen(false));
   useClickOutside(tagFilterRef, tagFilterOpen, () => setTagFilterOpen(false));
+  useClickOutside(layoutMenuRef, layoutMenuOpen, () => setLayoutMenuOpen(false));
 
   function resetSelection() {
     setSelected(new Set());
@@ -1818,7 +1048,6 @@ function App() {
     setActiveFileDraft(localDraft ?? file.content_text ?? '');
     setSelectedFileFolderId(file.parent_id || null);
     setFileWorkbenchOpen(true);
-    setPdfViewer(null);
   }
 
   async function openLibraryFileById(libraryId, fileId) {
@@ -1828,19 +1057,51 @@ function App() {
     if (file) openLibraryFile(file);
   }
 
-  async function createMarkdownFile(parentId = selectedFileFolderId) {
+  async function createMarkdownFile(parentId = selectedFileFolderId, options = {}) {
     if (!activeLibrary) return;
     const data = await api(`/libraries/${activeLibrary.id}/files`, {
       method: 'POST',
       body: {
-        name: '',
+        name: options.name || '',
         type: 'markdown',
-        content: '',
+        content: options.content || '',
         parent_id: parentId || null,
+        metadata: options.metadata || {},
       },
     });
     await loadLibraryFiles(activeLibrary.id);
-    openLibraryFile(data.file);
+    if (options.open !== false) openLibraryFile(data.file);
+    return data.file;
+  }
+
+  async function createLibraryFolderSilently(name, parentId = selectedFileFolderId, metadata = {}) {
+    if (!activeLibrary) return null;
+    const data = await api(`/libraries/${activeLibrary.id}/files`, {
+      method: 'POST',
+      body: {
+        name: name || 'New Folder',
+        type: 'folder',
+        parent_id: parentId || null,
+        metadata,
+      },
+    });
+    await loadLibraryFiles(activeLibrary.id);
+    setSelectedFileFolderId(data.file.id);
+    setExpandedFileFolders((items) => new Set([...items, data.file.id]));
+    return data.file;
+  }
+
+  async function saveLibraryFileContent(file, content) {
+    if (!activeLibrary || !file) return null;
+    const data = await api(`/libraries/${activeLibrary.id}/files/${file.id}`, {
+      method: 'PATCH',
+      body: { content },
+    });
+    setLibraryFiles((files) => files.map((item) => (item.id === data.file.id ? data.file : item)));
+    setActiveFile((current) => (current?.id === data.file.id ? data.file : current));
+    setActiveFileDraft(data.file?.content_text || '');
+    localStorage.removeItem(fileDraftKey(data.file.id));
+    return data.file;
   }
 
   async function createLibraryFolder(parentId = selectedFileFolderId) {
@@ -1860,11 +1121,11 @@ function App() {
     setExpandedFileFolders((items) => new Set([...items, data.file.id]));
   }
 
-  async function saveActiveFile() {
+  async function saveActiveFile(nextContent = activeFileDraft) {
     if (!activeLibrary || !activeFile) return;
     const data = await api(`/libraries/${activeLibrary.id}/files/${activeFile.id}`, {
       method: 'PATCH',
-      body: { content: activeFileDraft },
+      body: { content: nextContent },
     });
     setActiveFile(data.file);
     setActiveFileDraft(data.file?.content_text || '');
@@ -1915,6 +1176,22 @@ function App() {
     }, 0);
   }
 
+  function getActiveMarkdownSelection() {
+    const textarea = fileEditorRef.current;
+    if (textarea && typeof textarea.selectionStart === 'number') {
+      return {
+        start: textarea.selectionStart,
+        end: textarea.selectionEnd ?? textarea.selectionStart,
+        text: activeFileDraft.slice(textarea.selectionStart, textarea.selectionEnd ?? textarea.selectionStart),
+      };
+    }
+    const selectedText = compactText(window.getSelection?.()?.toString?.() || '');
+    if (!selectedText) return { start: activeFileDraft.length, end: activeFileDraft.length, text: '' };
+    const start = activeFileDraft.indexOf(selectedText);
+    if (start < 0) return { start: activeFileDraft.length, end: activeFileDraft.length, text: selectedText };
+    return { start, end: start + selectedText.length, text: selectedText };
+  }
+
   async function deleteLibraryFile(file) {
     if (!activeLibrary || !file) return;
     if (!window.confirm(text.common.confirmDelete)) return;
@@ -1928,16 +1205,40 @@ function App() {
     if (selectedFileFolderId === file.id) setSelectedFileFolderId(file.parent_id || null);
   }
 
-  function exportLibraryFile(file) {
-    if (!activeLibrary || !file || file.type === 'folder') return;
-    window.open(`${API}/libraries/${activeLibrary.id}/files/${file.id}/export`, '_blank', 'noopener,noreferrer');
+  function normalizedCitationExportFormat(format) {
+    const value = String(format || 'raw').toLowerCase();
+    return ['apa', 'mla', 'gbt', 'latex'].includes(value) ? value : '';
   }
 
-  function exportCurrentFileFolder() {
+  function exportLibraryFile(file, format = 'raw') {
+    if (!activeLibrary || !file || file.type === 'folder') return;
+    const citationFormat = normalizedCitationExportFormat(format);
+    const qs = citationFormat ? `?citation_format=${encodeURIComponent(citationFormat)}` : '';
+    window.open(`${API}/libraries/${activeLibrary.id}/files/${file.id}/export${qs}`, '_blank', 'noopener,noreferrer');
+  }
+
+  function exportCurrentFileFolder(format = 'raw') {
     if (!activeLibrary) return;
-    const qs = selectedFileFolderId ? `?folder_id=${selectedFileFolderId}` : '';
+    const citationFormat = normalizedCitationExportFormat(format);
+    const params = new URLSearchParams();
+    if (selectedFileFolderId) params.set('folder_id', selectedFileFolderId);
+    if (citationFormat) params.set('citation_format', citationFormat);
+    const qs = params.toString() ? `?${params.toString()}` : '';
     window.open(`${API}/libraries/${activeLibrary.id}/files/export${qs}`, '_blank', 'noopener,noreferrer');
   }
+
+  function isFileDescendantOf(file, folderId, files) {
+    const byId = new Map(files.map((item) => [item.id, item]));
+    let parentId = file.parent_id;
+    const seen = new Set();
+    while (parentId && !seen.has(parentId)) {
+      if (Number(parentId) === Number(folderId)) return true;
+      seen.add(parentId);
+      parentId = byId.get(parentId)?.parent_id;
+    }
+    return false;
+  }
+
 
   function closeFileWorkbench() {
     if (!confirmUnsavedFileExit()) return;
@@ -1967,11 +1268,14 @@ function App() {
     }
   }
 
-  function clearPdfTranslationPopup() {
+  function clearPdfTranslationPopup(options = {}) {
     translationRequestRef.current += 1;
+    translationRangeRef.current = null;
     lastTranslatedSelectionRef.current = '';
     setTranslationPopup(null);
-    window.getSelection?.()?.removeAllRanges?.();
+    if (!options.keepSelection) {
+      window.getSelection?.()?.removeAllRanges?.();
+    }
   }
 
   async function translatePdfText(sourceText, position = null) {
@@ -2143,10 +1447,12 @@ function App() {
       setTableFilters(nextFilters);
       resetSelection();
       await loadLibraryPapers(data.library.id, nextFilters);
-      if (data.search_summary?.strategy === 'broad_abstract_filter') {
+      if (data.search_summary?.strategy?.endsWith('abstract_filter')) {
+        const usedBroadSearch = data.search_summary.strategy === 'broad_abstract_filter';
+        const reviewCount = data.search_summary.needs_review || 0;
         showNotice(locale === 'zh'
-          ? `宽松检索 ${data.search_summary.candidates} 篇，摘要筛选后加入 ${data.search_summary.added} 篇`
-          : `Broad search found ${data.search_summary.candidates}; ${data.search_summary.added} passed abstract screening`);
+          ? `${usedBroadSearch ? '扩展检索' : '初始检索'} ${data.search_summary.candidates} 篇，加入 ${data.search_summary.added} 篇${reviewCount ? `，其中 ${reviewCount} 篇待确认` : ''}`
+          : `${usedBroadSearch ? 'Expanded' : 'Initial'} search found ${data.search_summary.candidates}; added ${data.search_summary.added}${reviewCount ? `, ${reviewCount} need review` : ''}`);
       }
       setLibraryCreateStatus('done');
       navigate('scholarx');
@@ -2369,20 +1675,68 @@ function App() {
   }
 
   function openPaperPdf(paper, title = displayPaperTitle(paper)) {
-    pdfReturnPaperIdRef.current = paper.id;
+    const snapshot = snapshotPaperViewState();
+    pdfReturnListStateRef.current = snapshot;
+    if (snapshot) writeStoredPaperViewState(snapshot.libraryId, snapshot);
     setPdfViewer({ url: paper.pdf_url, title, paperId: paper.id });
+  }
+
+  function scrollPaperRowIntoView(paperId, { flash = true } = {}) {
+    window.setTimeout(() => {
+      const wrap = paperTableWrapRef.current;
+      const row = wrap?.querySelector(`[data-paper-id="${paperId}"]`);
+      if (!wrap || !row) return;
+      const wrapRect = wrap.getBoundingClientRect();
+      const rowRect = row.getBoundingClientRect();
+      const rowTop = rowRect.top - wrapRect.top + wrap.scrollTop;
+      const targetTop = Math.max(0, rowTop - (wrap.clientHeight - rowRect.height) / 2);
+      wrap.scrollTo({ top: targetTop, behavior: 'smooth' });
+      if (!flash) return;
+      row.classList.add('citation-target-flash');
+      window.setTimeout(() => row.classList.remove('citation-target-flash'), 1300);
+    }, 0);
+  }
+
+  function openCitationReference(reference) {
+    const parsed = parseCitationId(reference?.refId || reference?.id);
+    const paperId = reference?.paperId || reference?.paper_id || parsed.paperId;
+    if (!paperId) return;
+    const paper = libraryPapers.find((item) => Number(item.id) === Number(paperId));
+    const chunkId = reference?.chunkId ?? reference?.chunk_id ?? parsed.chunkId;
+    const page = reference?.page || reference?.page_number || reference?.pageNumber || null;
+    const quote = reference?.chunkText || reference?.text || reference?.snippet || reference?.chunk || '';
+    if (!chunkId && !page) {
+      scrollPaperRowIntoView(paperId);
+      return;
+    }
+    if (paper?.pdf_url || reference?.pdfUrl || reference?.pdf_url) {
+      const url = paper?.pdf_url || reference.pdfUrl || reference.pdf_url;
+      const snapshot = snapshotPaperViewState();
+      pdfReturnListStateRef.current = snapshot;
+      if (snapshot) writeStoredPaperViewState(snapshot.libraryId, snapshot);
+      setPdfViewer({
+        url,
+        title: reference?.title || (paper ? displayPaperTitle(paper) : ''),
+        paperId,
+        target: {
+          page,
+          chunkId,
+          quote,
+        },
+      });
+      return;
+    }
+    scrollPaperRowIntoView(paperId);
   }
 
   function closePaperPdf() {
     clearPdfTranslationPopup();
-    const returnPaperId = pdfReturnPaperIdRef.current || pdfViewer?.paperId;
+    const returnState = pdfReturnListStateRef.current
+      || readStoredPaperViewState(activeLibrary?.id);
     setPdfViewer(null);
-    window.setTimeout(() => {
-      const row = document.querySelector(`[data-paper-id="${returnPaperId}"]`);
-      if (row) {
-        row.scrollIntoView({ block: 'center' });
-      }
-    }, 0);
+    if (returnState?.filters) setTableFilters(returnState.filters);
+    schedulePaperScrollRestore(returnState?.scrollTop || 0);
+    pdfReturnListStateRef.current = null;
   }
 
   function openRenamePaperModal(paper) {
@@ -2392,24 +1746,71 @@ function App() {
 
   function openPaperDetails(paper) {
     setDetailPaper(paper);
-    setDetailAbstract(displayPaperAbstract(paper));
   }
 
-  async function savePaperAbstract() {
+  async function savePaperDetails(payload) {
     if (!activeLibrary || !detailPaper) return;
     setBusy(true);
     try {
-      const nextAbstract = detailAbstract.trim();
-      await api(`/libraries/${activeLibrary.id}/papers/${detailPaper.id}`, {
+      const data = await api(`/libraries/${activeLibrary.id}/papers/${detailPaper.id}`, {
         method: 'PATCH',
-        body: { abstract: nextAbstract },
+        body: {
+          title: payload.title,
+          authors: payload.authors,
+          pub_year: payload.pub_year,
+          venue: payload.venue,
+          abstract: payload.abstract,
+        },
       });
+      const updatedPaper = data.paper || {
+        ...detailPaper,
+        title: payload.title.trim(),
+        authors: payload.authors,
+        pub_year: payload.pub_year,
+        abstract: payload.abstract.trim(),
+        abstract_source: payload.abstract?.trim() ? 'manual' : '',
+        metadata_json: { ...(detailPaper.metadata_json || {}), manual_venue: payload.venue.trim() },
+      };
       setLibraryPapers((papers) => papers.map((paper) => (
-        paper.id === detailPaper.id ? { ...paper, abstract: nextAbstract, abstract_source: nextAbstract ? 'manual' : '' } : paper
+        paper.id === detailPaper.id ? updatedPaper : paper
       )));
-      setDetailPaper(null);
-      setDetailAbstract('');
-      showNotice(text.table.abstractSaved);
+      setDetailPaper(updatedPaper);
+      showNotice(text.table.detailsSaved);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unlinkPaperPdf() {
+    if (!activeLibrary || !detailPaper?.pdf_url) return;
+    setBusy(true);
+    try {
+      const data = await api(`/libraries/${activeLibrary.id}/papers/${detailPaper.id}/pdf`, { method: 'DELETE' });
+      const updatedPaper = data.paper || {
+        ...detailPaper,
+        dblp_key: null,
+        authors: [],
+        pub_year: null,
+        pub_url: '',
+        doi_url: '',
+        paper_details: {},
+        ref_venue: null,
+        venue_name: null,
+        venue_abbr: null,
+        main_venue_abbr: null,
+        main_venue_name: null,
+        rank: null,
+        abstract: '',
+        abstract_source: '',
+        detail_snippet: '',
+        bib: '',
+        metadata_json: { ...(detailPaper.metadata_json || {}), index_unlinked_at: new Date().toISOString() },
+      };
+      setLibraryPapers((papers) => papers.map((paper) => (
+        paper.id === detailPaper.id ? updatedPaper : paper
+      )));
+      setDetailPaper(updatedPaper);
+      showNotice(text.table.pdfUnlinked);
     } finally {
       setBusy(false);
     }
@@ -2485,7 +1886,16 @@ function App() {
     setActiveFileDraft('');
     setSelectedFileFolderId(null);
     setFileWorkbenchOpen(true);
-    setPdfViewer(null);
+    setAssociatingPaper(null);
+    resetSelection();
+  }
+
+  function openFileWorkbenchForLayout(library) {
+    if (!library) return;
+    setExpandedLibraries((items) => new Set([...items, library.id]));
+    setActiveLibrary(library);
+    setSelectedFileFolderId(null);
+    setFileWorkbenchOpen(true);
     setAssociatingPaper(null);
     resetSelection();
   }
@@ -2649,10 +2059,36 @@ function App() {
     showNotice(text.user.modelSaved);
   }
 
-  function resetLayout() {
-    setColumns({ left: 1.15, middle: 4, right: 2 });
-    setLeftPaneCollapsed(false);
-    setRightPaneCollapsed(false);
+  function applyLayoutPreset(nextPreset, options = {}) {
+    const preset = LAYOUT_PRESETS[nextPreset] || LAYOUT_PRESETS.default;
+    if (!preset.filesOpen && fileWorkbenchOpen && !confirmUnsavedFileExit()) return;
+    if (preset.filesOpen && !fileWorkbenchOpen && activeLibrary && !confirmUnsavedFileExit()) return;
+
+    setLayoutPreset(nextPreset);
+    if (options.persist !== false) {
+      localStorage.setItem('scholarx.layoutPreset', nextPreset);
+    }
+    setLayoutMenuOpen(false);
+    setColumns(preset.columns);
+    setLeftPaneCollapsed(preset.leftCollapsed);
+    setRightPaneCollapsed(preset.rightCollapsed);
+    setFileSidebarCollapsed(preset.fileSidebarCollapsed);
+    setFileSidebarMode('files');
+
+    if (preset.filesOpen) {
+      if (activeLibrary && !fileWorkbenchOpen) {
+        openFileWorkbenchForLayout(activeLibrary);
+      } else {
+        setFileWorkbenchOpen(true);
+      }
+      return;
+    }
+
+    if (fileWorkbenchOpen) {
+      setActiveFile(null);
+      setActiveFileDraft('');
+      setFileWorkbenchOpen(false);
+    }
   }
 
   async function saveTagDefinition(tag) {
@@ -2701,6 +2137,287 @@ function App() {
     setTagFilterOpen(false);
   }
 
+  function updateStreamingAssistant(updater) {
+    updateActiveChat((chat) => {
+      const nextMessages = [...(chat.messages || [])];
+      const index = nextMessages.findLastIndex((message) => message.role === 'assistant' && message.streaming);
+      if (index === -1) return {};
+      nextMessages[index] = { ...nextMessages[index], ...updater(nextMessages[index]) };
+      return { messages: nextMessages };
+    });
+  }
+
+  function currentChatPaperIds() {
+    return selectedChatPaperIds({ selectedAll, selectedIds, pdfViewer });
+  }
+
+  async function startWritingWizard(userMessage) {
+    const targetVenue = targetVenueFromPrompt(userMessage);
+    const domain = inferWritingDomain(userMessage, activeLibrary);
+    let candidatePapers = libraryPapers;
+    try {
+      const data = await api(`/libraries/${activeLibrary.id}/papers?${new URLSearchParams({ page: 1, page_size: 120 }).toString()}`);
+      candidatePapers = data.papers || libraryPapers;
+    } catch {
+      candidatePapers = libraryPapers;
+    }
+    const references = chooseReferencePapers(candidatePapers, userMessage, targetVenue);
+    setWritingWizard({
+      prompt: userMessage,
+      step: 0,
+      domain,
+      targetVenue,
+      references,
+      citationStyle: 'GB/T 7714',
+      outline: buildOutlineMarkdown({
+        prompt: userMessage,
+        library: activeLibrary,
+        domain,
+        references,
+        citationStyle: 'GB/T 7714',
+      }),
+      status: '',
+    });
+  }
+
+  async function streamMarkdownToFile(file, prompt, paperIds = [], options = {}) {
+    if (!activeLibrary || !file) return;
+    const abortController = new AbortController();
+    chatAbortControllerRef.current = abortController;
+    setChatBusy(true);
+    setAiFileEditing(true);
+    setFileWorkbenchOpen(true);
+    setFileSourceMode(false);
+    let generated = options.initialContent || '';
+    setActiveFileDraft(generated);
+    try {
+      updateActiveChat((chat) => ({
+        messages: [
+          ...(chat.messages || []),
+          {
+            role: 'assistant',
+            content: `${text.agent.fileCreated}：\`${file.name}\`\n\n正在写入文件...`,
+            streaming: true,
+            trace: [],
+            paper_refs: [],
+            pdf_evidence: [],
+          },
+        ],
+      }));
+      await streamApi('/chat/stream', {
+        message: prompt,
+        library_id: activeLibrary.id,
+        paper_ids: paperIds,
+        skill_ids: enabledSkillIds,
+        user_key: userEmail || 'local',
+        llm: llmSettings,
+      }, (event, data) => {
+        if (event === 'trace') {
+          updateStreamingAssistant((message) => ({ trace: [...(message.trace || []), data] }));
+        } else if (event === 'refs') {
+          updateStreamingAssistant(() => ({ paper_refs: data.paper_refs || [] }));
+        } else if (event === 'evidence') {
+          updateStreamingAssistant(() => ({ pdf_evidence: data.pdf_evidence || [] }));
+        } else if (event === 'delta') {
+          generated += data.content || '';
+          setActiveFileDraft(generated);
+        } else if (event === 'done') {
+          generated = data.answer || generated;
+          setActiveFileDraft(generated);
+          const toolActions = [{
+            id: `open-file-${file.id}`,
+            type: 'open_file',
+            label: text.agent.wizardOpenFile,
+            library_id: activeLibrary.id,
+            file_id: file.id,
+          }];
+          updateStreamingAssistant((message) => ({
+            content: `${text.agent.fileCreated}：\`${file.name}\`\n\n${options.doneMessage || '内容已写入文件库。'}`,
+            provider: data.provider,
+            protocol: data.protocol,
+            model: data.model,
+            paper_refs: data.paper_refs || [],
+            pdf_evidence: data.pdf_evidence || [],
+            retrieval_plan: data.retrieval_plan || {},
+            trace: mergeChatTrace(message.trace || [], data.trace || []),
+            tool_actions: toolActions,
+            streaming: false,
+          }));
+        } else if (event === 'error') {
+          throw new Error(data.error || '请求失败');
+        }
+      }, { signal: abortController.signal });
+      await saveLibraryFileContent(file, generated);
+      showNotice(`${text.workbench.fileSaved} · ${file.name}`);
+    } catch (err) {
+      if (abortController.signal.aborted || err?.name === 'AbortError') {
+        updateStreamingAssistant((message) => ({
+          content: message.content || text.agent.stopped,
+          streaming: false,
+        }));
+      } else {
+        updateStreamingAssistant(() => ({
+          content: `${text.agent.requestFailed}${err.message}`,
+          error: true,
+          streaming: false,
+        }));
+      }
+    } finally {
+      if (chatAbortControllerRef.current === abortController) {
+        chatAbortControllerRef.current = null;
+      }
+      setChatBusy(false);
+      setAiFileEditing(false);
+    }
+  }
+
+  async function createAndStreamCreativeFile(userMessage, paperIds = currentChatPaperIds()) {
+    if (!activeLibrary) {
+      await requestChatAnswer(userMessage);
+      return;
+    }
+    const fileName = markdownFileNameFromPrompt(userMessage, 'draft');
+    const file = await createMarkdownFile(selectedFileFolderId, {
+      name: fileName,
+      content: '',
+      open: true,
+      metadata: { source: 'agent_creative_task', prompt: userMessage },
+    });
+    if (!file) return;
+    const references = libraryPapers.filter((paper) => paperIds.includes(paper.id));
+    await streamMarkdownToFile(file, buildCreativeDraftPrompt(userMessage, file.name, references), paperIds, {
+      doneMessage: '生成完成，已停在当前文件。',
+    });
+  }
+
+  async function updateWizardPdf(paper, file) {
+    if (!paper || !file) return;
+    await storePdfForPaper(paper, file);
+    const data = await api(`/libraries/${activeLibrary.id}/papers?${new URLSearchParams({ page: 1, page_size: 120 }).toString()}`);
+    setLibraryPapers(data.papers || []);
+    setWritingWizard((wizard) => {
+      if (!wizard) return wizard;
+      return {
+        ...wizard,
+        references: (wizard.references || []).map((item) => (
+          item.id === paper.id ? { ...item, pdf_url: paper.pdf_url || 'uploaded' } : item
+        )),
+      };
+    });
+  }
+
+  function updateWritingWizard(patch) {
+    setWritingWizard((wizard) => (wizard ? { ...wizard, ...patch } : wizard));
+  }
+
+  async function nextWritingWizardStep() {
+    const wizard = writingWizard;
+    if (!wizard) return;
+    if (wizard.step === 1 && (wizard.references || []).some((paper) => !paper.pdf_url)) {
+      showNotice(text.agent.wizardNeedPdf);
+      return;
+    }
+    if (wizard.step < 4) {
+      setWritingWizard({ ...wizard, step: wizard.step + 1 });
+      return;
+    }
+    const folder = await createLibraryFolderSilently(
+      markdownFileNameFromPrompt(wizard.prompt, 'writing').replace(/\.md$/i, ''),
+      selectedFileFolderId,
+      { source: 'writing_wizard', prompt: wizard.prompt },
+    );
+    const outlineContent = wizard.outline || buildOutlineMarkdown({
+      prompt: wizard.prompt,
+      library: activeLibrary,
+      domain: wizard.domain,
+      references: wizard.references,
+      citationStyle: wizard.citationStyle,
+    });
+    await createMarkdownFile(folder?.id || selectedFileFolderId, {
+      name: 'outline.md',
+      content: outlineContent,
+      open: false,
+      metadata: { source: 'writing_wizard_outline' },
+    });
+    const mainFile = await createMarkdownFile(folder?.id || selectedFileFolderId, {
+      name: markdownFileNameFromPrompt(wizard.prompt, 'main-draft'),
+      content: '',
+      open: true,
+      metadata: { source: 'writing_wizard_main', prompt: wizard.prompt },
+    });
+    setWritingWizard(null);
+    await streamMarkdownToFile(
+      mainFile,
+      buildMainDraftPrompt({
+        prompt: wizard.prompt,
+        domain: wizard.domain,
+        references: wizard.references,
+        outline: outlineContent,
+        citationStyle: wizard.citationStyle,
+      }),
+      (wizard.references || []).map((paper) => paper.id),
+      { doneMessage: '主文档已根据大纲生成，outline.md 已存入同一文件夹。' },
+    );
+  }
+
+  function previousWritingWizardStep() {
+    setWritingWizard((wizard) => (
+      wizard ? { ...wizard, step: Math.max(0, wizard.step - 1) } : wizard
+    ));
+  }
+
+  async function requestMarkdownInlineCompletion({ before = '', after = '', documentText = '', fileName = '', onDelta }) {
+    if (!activeLibrary || !activeFile) return '';
+    const paperIds = currentChatPaperIds();
+    const selectedPaperLines = paperIds.length
+      ? libraryPapers
+        .filter((paper) => paperIds.includes(paper.id))
+        .map((paper) => `- ${displayPaperTitle(paper)} | ${displayVenue(paper).label} | ${paper.pub_year || ''}`)
+        .join('\n')
+      : '未指定选中论文。';
+    const prompt = [
+      '你是正文续写自动补全器，负责续写光标后的一小段正文。',
+      '根据用户上下文的风格输出后续文字，不要寒暄，不要解释。',
+      '输出长度控制在半句到 1 句话，30字以内。',
+      `光标前 100 字：\n${before.slice(-100)}`,
+      `光标后 100 字：\n${after.slice(0, 100)}`,
+      '要求：像用户正在写的原文一样自然接上；如果光标后已有文字，补全内容必须能和后文顺滑衔接。',
+    ].join('\n\n');
+    const abortController = new AbortController();
+    inlineCompletionAbortRef.current?.abort();
+    inlineCompletionAbortRef.current = abortController;
+    setAiFileEditing(true);
+    let generated = '';
+    try {
+      await streamApi('/chat/stream', {
+        message: prompt,
+        library_id: activeLibrary.id,
+        paper_ids: paperIds,
+        skill_ids: enabledSkillIds,
+        user_key: userEmail || 'local',
+        llm: llmSettings,
+      }, (event, data) => {
+        if (event === 'delta') {
+          generated += data.content || '';
+          onDelta?.(generated.replace(/\[(?:P|p)\d+\]/g, '').trimStart());
+        } else if (event === 'done') {
+          generated = data.answer || generated;
+        } else if (event === 'error') {
+          throw new Error(data.error || '请求失败');
+        }
+      }, { signal: abortController.signal });
+      return String(generated || '').replace(/\[(?:P|p)\d+\]/g, '').trim();
+    } catch (err) {
+      if (!(abortController.signal.aborted || err?.name === 'AbortError')) setError(err.message);
+      return '';
+    } finally {
+      if (inlineCompletionAbortRef.current === abortController) {
+        inlineCompletionAbortRef.current = null;
+      }
+      setAiFileEditing(false);
+    }
+  }
+
   async function sendChatMessage(value) {
     if (chatAbortControllerRef.current) return;
     if (!value.trim()) return;
@@ -2712,27 +2429,26 @@ function App() {
       title: chat.title === text.agent.newChat ? userMessage.slice(0, 36) : chat.title,
       messages: [...(chat.messages || []), { role: 'user', content: userMessage }],
     }));
+    const paperIds = currentChatPaperIds();
+    if (!fileWorkbenchOpen && isPlanningWritingTask(userMessage) && !paperIds.length && activeLibrary) {
+      await startWritingWizard(userMessage);
+      updateActiveChat((chat) => ({
+        messages: [
+          ...(chat.messages || []),
+          { role: 'assistant', content: `已打开${text.agent.writingWizard}。`, tool_actions: [] },
+        ],
+      }));
+      return;
+    }
+    if (!fileWorkbenchOpen && isCreativeWritingTask(userMessage) && activeLibrary) {
+      await createAndStreamCreativeFile(userMessage, paperIds);
+      return;
+    }
     await requestChatAnswer(userMessage);
   }
 
   async function requestChatAnswer(userMessage) {
-    function updateStreamingAssistant(updater) {
-      updateActiveChat((chat) => {
-        const nextMessages = [...(chat.messages || [])];
-        const index = nextMessages.findLastIndex((message) => message.role === 'assistant' && message.streaming);
-        if (index === -1) return {};
-        nextMessages[index] = { ...nextMessages[index], ...updater(nextMessages[index]) };
-        return { messages: nextMessages };
-      });
-    }
-
-    const chatPaperIds = selectedAll
-      ? []
-      : selectedIds.length
-        ? selectedIds
-        : pdfViewer?.paperId
-          ? [pdfViewer.paperId]
-          : [];
+    const chatPaperIds = currentChatPaperIds();
     const requestBody = {
       message: userMessage,
       library_id: activeLibrary?.id,
@@ -2929,6 +2645,7 @@ function App() {
           setSession(nextSession);
           navigate('scholarx');
         }}
+        supabase={supabase}
       />
     );
   }
@@ -2954,6 +2671,7 @@ function App() {
         user={user}
         userEmail={userEmail}
         onBack={() => navigate('scholarx')}
+        supabase={supabase}
       />
     );
   }
@@ -2972,7 +2690,7 @@ function App() {
     <main
       className="app-shell"
       style={{
-        gridTemplateColumns: `${leftPaneCollapsed ? '0px' : `${columns.left}fr`} 16px ${columns.middle}fr 16px ${rightPaneCollapsed ? '0px' : `${columns.right}fr`}`,
+        gridTemplateColumns: `${leftPaneCollapsed ? '0px' : `minmax(0, ${columns.left}fr)`} 6px minmax(0, ${columns.middle}fr) 6px ${rightPaneCollapsed ? '0px' : `minmax(0, ${columns.right}fr)`}`,
       }}
     >
       <aside className={`library-pane ${leftPaneCollapsed ? 'collapsed' : ''}`}>
@@ -2990,10 +2708,36 @@ function App() {
                 : text.brand.fallback}
             </p>
           </div>
-          <div className="pane-tools">
-            <button className="icon-button" title={text.common.resetLayout} aria-label={text.common.resetLayout} onClick={resetLayout}>
-              <RotateCcw size={17} />
+          <div className="pane-tools layout-menu-wrap" ref={layoutMenuRef}>
+            <button
+              className={`icon-button layout-menu-trigger ${layoutMenuOpen ? 'active' : ''}`}
+              title={text.common.layoutMenu}
+              aria-label={text.common.layoutMenu}
+              aria-haspopup="menu"
+              aria-expanded={layoutMenuOpen}
+              onClick={() => setLayoutMenuOpen((open) => !open)}
+            >
+              <LayoutDashboard size={17} />
             </button>
+            {layoutMenuOpen && (
+              <div className="layout-menu" role="menu">
+                {layoutOptions.map((option) => (
+                  <button
+                    key={option.id}
+                    className={layoutPreset === option.id ? 'active' : ''}
+                    role="menuitemradio"
+                    aria-checked={layoutPreset === option.id}
+                    onClick={() => applyLayoutPreset(option.id)}
+                  >
+                    <span>
+                      <strong>{option.label}</strong>
+                      <small>{option.description}</small>
+                    </span>
+                    {layoutPreset === option.id && <Check size={15} />}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -3060,30 +2804,18 @@ function App() {
       />
 
       <section className="paper-pane">
-        <header className={`paper-compact-header ${pdfViewer || fileWorkbenchOpen ? 'pdf-mode' : ''}`}>
+        <header className={`paper-compact-header ${pdfViewer ? 'pdf-mode' : ''}`}>
           {pdfViewer && (
             <button className="secondary-button pdf-back-button" onClick={closePaperPdf}>
               <ChevronLeft size={16} /> {text.workbench.closePdf}
             </button>
           )}
-          {fileWorkbenchOpen && !pdfViewer && (
-            <button className="secondary-button pdf-back-button" onClick={() => {
-              closeFileWorkbench();
-            }}>
-              <ChevronLeft size={16} /> {text.workbench.closePdf}
-            </button>
-          )}
           <div className="paper-header-title">
             <h2>
-              {pdfViewer?.title || (fileWorkbenchOpen ? text.workbench.fileLibrary : activeLibrary?.name) || text.workbench.catalogFallback}
+              {pdfViewer?.title || activeLibrary?.name || text.workbench.catalogFallback}
             </h2>
-            {!pdfViewer && !fileWorkbenchOpen && (
+            {!pdfViewer && (
               <p>{`${paperTotal} ${text.workbench.papersLoaded} · ${selectedCount} ${text.workbench.selected}`}</p>
-            )}
-            {fileWorkbenchOpen && !pdfViewer && (
-              <p className="current-file-name">
-                {activeFile?.name || `${libraryFiles.length} ${text.modal.fileCount || 'files'}`}
-              </p>
             )}
           </div>
           {pdfViewer ? (
@@ -3097,12 +2829,6 @@ function App() {
                 }}
               >
                 <Languages size={16} /> {text.workbench.translateSelection}
-              </button>
-            </div>
-          ) : fileWorkbenchOpen ? (
-            <div className="pdf-header-actions">
-              <button className="secondary-button" onClick={exportCurrentFileFolder}>
-                {text.workbench.exportAll}
               </button>
             </div>
           ) : (
@@ -3195,6 +2921,7 @@ function App() {
 
         {pdfViewer ? (
           <div
+            ref={pdfViewerRef}
             className="pdf-viewer"
             onMouseDown={(event) => {
               if (!translationPopup) return;
@@ -3202,124 +2929,17 @@ function App() {
               clearPdfTranslationPopup();
             }}
           >
-            <PdfJsViewer text={text} url={pdfViewer.url} title={pdfViewer.title} />
+            <PdfJsViewer text={text} url={pdfViewer.url} title={pdfViewer.title} target={pdfViewer.target} />
             {translationPopup && (
               <PdfTranslationPopup
                 text={text}
                 popup={translationPopup}
-                onClose={clearPdfTranslationPopup}
               />
             )}
           </div>
-        ) : fileWorkbenchOpen ? (
-          <div className={`file-workbench-shell ${fileSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-            {!fileSidebarCollapsed && (
-            <aside
-              className="file-workbench-tree"
-              onContextMenu={(event) => {
-                event.preventDefault();
-                setFileContextMenu({ type: 'blank', x: event.clientX, y: event.clientY, parentId: selectedFileFolderId });
-              }}
-            >
-              <div className="file-library-header">
-                <div>
-                  <strong>{activeLibrary?.name || text.workbench.catalogFallback}</strong>
-                </div>
-                <button
-                  className="icon-button"
-                  title={text.workbench.newMarkdown}
-                  aria-label={text.workbench.newMarkdown}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    createMarkdownFile(selectedFileFolderId);
-                  }}
-                  disabled={!activeLibrary}
-                >
-                  <Plus size={16} />
-                </button>
-              </div>
-              <div className="file-sidebar-tabs">
-                <button className={fileSidebarMode === 'files' ? 'active' : ''} onClick={() => setFileSidebarMode('files')}>{text.workbench.filesTab}</button>
-                <button className={fileSidebarMode === 'outline' ? 'active' : ''} onClick={() => setFileSidebarMode('outline')}>{text.workbench.outlineTab}</button>
-              </div>
-              {fileSidebarMode === 'files' ? (
-                <LibraryFileTree
-                  text={text}
-                  files={libraryFiles}
-                  activeFile={activeFile}
-                  selectedFolderId={selectedFileFolderId}
-                  expandedFolders={expandedFileFolders}
-                  setExpandedFolders={setExpandedFileFolders}
-                  onOpenFile={openLibraryFile}
-                  onSelectFolder={(file) => {
-                    setSelectedFileFolderId(file?.id || null);
-                    if (file?.id) setExpandedFileFolders((items) => new Set([...items, file.id]));
-                  }}
-                  onContextMenu={(event, file) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setFileContextMenu({ type: file.type === 'folder' ? 'folder' : 'file', target: file, x: event.clientX, y: event.clientY });
-                  }}
-                  renamingFileId={renamingFileId}
-                  renamingFileName={renamingFileName}
-                  setRenamingFileName={setRenamingFileName}
-                  onStartRename={startRenamingFile}
-                  onCommitRename={renameLibraryFile}
-                  activeFileDirty={activeFileDirty}
-                />
-              ) : (
-                <FileOutline text={text} content={activeFileDraft} onJump={(id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
-              )}
-            </aside>
-            )}
-            <section className="typora-editor-panel">
-              {activeFile ? (
-                fileSourceMode ? (
-                  <>
-                  <div className="markdown-format-toolbar">
-                    <button onClick={() => insertMarkdownTemplate('# ', 2)}>H1</button>
-                    <button onClick={() => insertMarkdownTemplate('## ', 3)}>H2</button>
-                    <button onClick={() => insertMarkdownTemplate('### ', 4)}>H3</button>
-                    <button onClick={() => insertMarkdownTemplate('\n$$\n\n$$\n', 4)}>公式</button>
-                    <button onClick={() => insertMarkdownTemplate('\n```\n\n```\n', 5)}>代码</button>
-                    <button onClick={() => insertMarkdownTemplate((selected) => `**${selected || '粗体'}**`, 2)}>B</button>
-                    <button onClick={() => insertMarkdownTemplate((selected) => `- ${selected || '列表项'}\n`, 2)}>列表</button>
-                  </div>
-                  <textarea
-                    ref={fileEditorRef}
-                    className="typora-editor"
-                    value={activeFileDraft}
-                    onChange={(event) => setActiveFileDraft(event.target.value)}
-                    spellCheck={false}
-                  />
-                  </>
-                ) : (
-                  <VditorMarkdownEditor
-                    value={activeFileDraft}
-                    onChange={setActiveFileDraft}
-                    language={locale === 'zh' ? 'zh_CN' : 'en_US'}
-                  />
-                )
-              ) : (
-                <div className="file-editor-empty">
-                  <FileText size={28} />
-                  <strong>{text.workbench.fileEmpty}</strong>
-                </div>
-              )}
-              <div className="file-editor-footer">
-                <button onClick={() => setFileSidebarCollapsed((value) => !value)}>
-                  {fileSidebarCollapsed ? '›' : '‹'}
-                </button>
-                <button className={fileSourceMode ? 'active' : ''} onClick={() => setFileSourceMode((value) => !value)}>
-                  {'</>'}
-                </button>
-              </div>
-            </section>
-          </div>
         ) : (
           <>
-            <div className="paper-table-wrap" ref={paperTableWrapRef}>
+            <div className="paper-table-wrap" ref={paperTableWrapRef} onScroll={handlePaperTableScroll}>
               <table className="paper-table">
                 <thead>
                   <tr>
@@ -3336,23 +2956,6 @@ function App() {
                     <th><SortButton label={text.table.year} column="year" tableFilters={tableFilters} setTableFilters={setTableFilters} /></th>
                     <th><SortButton label={text.table.rank} column="rank" tableFilters={tableFilters} setTableFilters={setTableFilters} /></th>
                     <th><SortButton label={text.table.venue} column="venue" tableFilters={tableFilters} setTableFilters={setTableFilters} /></th>
-                    <th>
-                      <div className="tag-header" ref={tagFilterRef}>
-                        <button className={`column-menu-button ${tableFilters.tag ? 'active' : ''}`} onClick={() => setTagFilterOpen(!tagFilterOpen)}>
-                          <Tag size={14} /> {tableFilters.tag || text.table.tagColumn} <ChevronDown size={13} />
-                        </button>
-                        {tagFilterOpen && (
-                          <TagFilterMenu
-                            text={text}
-                            definitions={tagDefinitions}
-                            activeTag={tableFilters.tag}
-                            onSelect={applyTagFilter}
-                            onAdd={() => openTagModal()}
-                            onEdit={openTagModal}
-                          />
-                        )}
-                      </div>
-                    </th>
                     <th></th>
                   </tr>
                 </thead>
@@ -3427,14 +3030,6 @@ function App() {
                         <td>{paper.pub_year || '-'}</td>
                         <td><span className={`rank rank-${paper.rank || 'none'}`}>{paper.rank || '-'}</span></td>
                         <td><span className="venue-display" title={venue.title}>{venue.label}</span></td>
-                        <td className="tag-cell">
-                          <TagCheckboxes
-                            text={text}
-                            paper={paper}
-                            definitions={tagDefinitions}
-                            onApply={(tags) => setPaperTags(paper, tags)}
-                          />
-                        </td>
                         <td><button className="icon-button danger" title={text.table.remove} aria-label={text.table.remove} onClick={() => removePaper(paper)}><Trash2 size={17} /></button></td>
                       </tr>
                     );
@@ -3505,11 +3100,68 @@ function App() {
         onDeleteMessage={deleteMessage}
         onDeleteChat={deleteChat}
         onExecuteAction={executeAgentAction}
+        onOpenNotes={() => activeLibrary && openLibraryFiles(activeLibrary)}
         onOpenPaperRef={(paperRef) => {
           if (paperRef?.pdf_url) {
+            const snapshot = snapshotPaperViewState();
+            pdfReturnListStateRef.current = snapshot;
+            if (snapshot) writeStoredPaperViewState(snapshot.libraryId, snapshot);
             setPdfViewer({ url: paperRef.pdf_url, title: paperRef.title, paperId: paperRef.paper_id });
           }
         }}
+        onOpenCitationReference={openCitationReference}
+        papers={libraryPapers}
+        paperContextActive={Boolean(pdfViewer)}
+        noteOpen={fileWorkbenchOpen}
+        writingWizard={writingWizard}
+        onUpdateWritingWizard={updateWritingWizard}
+        onNextWritingWizardStep={nextWritingWizardStep}
+        onPreviousWritingWizardStep={previousWritingWizardStep}
+        onCancelWritingWizard={() => setWritingWizard(null)}
+        onUploadWizardPdf={updateWizardPdf}
+        noteLibrary={activeLibrary}
+        noteFiles={libraryFiles}
+        activeFile={activeFile}
+        activeFileDraft={activeFileDraft}
+        activeFileDirty={activeFileDirty}
+        selectedFileFolderId={selectedFileFolderId}
+        expandedFileFolders={expandedFileFolders}
+        setExpandedFileFolders={setExpandedFileFolders}
+        fileSidebarMode={fileSidebarMode}
+        setFileSidebarMode={setFileSidebarMode}
+        fileSidebarCollapsed={fileSidebarCollapsed}
+        setFileSidebarCollapsed={setFileSidebarCollapsed}
+        fileSourceMode={fileSourceMode}
+        setFileSourceMode={setFileSourceMode}
+        fileEditorRef={fileEditorRef}
+        renamingFileId={renamingFileId}
+        renamingFileName={renamingFileName}
+        setRenamingFileName={setRenamingFileName}
+        onOpenFile={openLibraryFile}
+        onSelectFileFolder={(file) => {
+          setSelectedFileFolderId(file?.id || null);
+          if (file?.id) setExpandedFileFolders((items) => new Set([...items, file.id]));
+        }}
+        onFileContextMenu={(event, file) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setFileContextMenu({ type: file.type === 'folder' ? 'folder' : 'file', target: file, x: event.clientX, y: event.clientY });
+        }}
+        onBlankFileContextMenu={(event) => {
+          event.preventDefault();
+          setFileContextMenu({ type: 'blank', x: event.clientX, y: event.clientY, parentId: selectedFileFolderId });
+        }}
+        onStartRenameFile={startRenamingFile}
+        onCommitRenameFile={renameLibraryFile}
+        onCreateMarkdownFile={() => createMarkdownFile(selectedFileFolderId)}
+        onExportCurrentFileFolder={exportCurrentFileFolder}
+        onCloseNotes={closeFileWorkbench}
+        onSaveActiveFile={saveActiveFile}
+        onInsertMarkdownTemplate={insertMarkdownTemplate}
+        onChangeActiveFileDraft={setActiveFileDraft}
+        onRequestMarkdownCompletion={requestMarkdownInlineCompletion}
+        aiFileEditing={aiFileEditing}
+        editorLanguage={locale === 'zh' ? 'zh_CN' : 'en_US'}
       />
 
       {libraryModalOpen && (
@@ -3560,14 +3212,12 @@ function App() {
         <PaperDetailsModal
           text={text}
           paper={detailPaper}
-          abstractValue={detailAbstract}
-          setAbstractValue={setDetailAbstract}
           busy={busy}
-          onSaveAbstract={savePaperAbstract}
+          onSaveDetails={savePaperDetails}
           onUploadPdf={(file) => uploadPdfForPaper(detailPaper, file)}
+          onUnlinkPdf={unlinkPaperPdf}
           onClose={() => {
             setDetailPaper(null);
-            setDetailAbstract('');
           }}
         />
       )}
@@ -3718,11 +3368,16 @@ function App() {
             setFileContextMenu(null);
             startRenamingFile(file);
           }}
-          onExport={(file) => {
+          onExport={(file, format) => {
             setFileContextMenu(null);
-            file.type === 'folder'
-              ? window.open(`${API}/libraries/${activeLibrary.id}/files/export?folder_id=${file.id}`, '_blank', 'noopener,noreferrer')
-              : exportLibraryFile(file);
+            if (file.type === 'folder') {
+              const params = new URLSearchParams({ folder_id: file.id });
+              const citationFormat = normalizedCitationExportFormat(format);
+              if (citationFormat) params.set('citation_format', citationFormat);
+              window.open(`${API}/libraries/${activeLibrary.id}/files/export?${params.toString()}`, '_blank', 'noopener,noreferrer');
+            } else {
+              exportLibraryFile(file, format);
+            }
           }}
           onDelete={(file) => {
             setFileContextMenu(null);
@@ -3743,993 +3398,8 @@ function App() {
   );
 }
 
-function toggleSetItem(setter, item) {
-  setter((items) => {
-    const next = new Set(items);
-    next.has(item) ? next.delete(item) : next.add(item);
-    return next;
-  });
-}
-
-function LibraryTree({
-  library,
-  activeLibrary,
-  activeFolder,
-  paperTotal,
-  text,
-  locale,
-  expandedLibraries,
-  expandedFolders,
-  setExpandedLibraries,
-  setExpandedFolders,
-  onOpenFolder,
-  onOpenFiles,
-  onEditLibrary,
-  onShareLibrary,
-  onContextMenu,
-}) {
-  const folderTree = buildFolderTree(library.filters_json?.folders || []);
-  const expanded = expandedLibraries.has(library.id);
-  return (
-    <div className="library-tree-item">
-      <div
-        className={`library-item ${activeLibrary?.id === library.id && !activeFolder ? 'active' : ''}`}
-        onContextMenu={(event) => onContextMenu(event, 'library', library)}
-      >
-        <button className="tree-toggle" disabled={!folderTree.length} onClick={() => toggleSetItem(setExpandedLibraries, library.id)}>
-          {folderTree.length ? expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} /> : <Library size={14} />}
-        </button>
-        <button className="library-main-button" onClick={() => onOpenFolder(library)}>
-          <span className="library-title">{library.name}</span>
-          <small>
-            <strong className="library-count">
-              ({paperTotal || 0})
-            </strong>
-            {library.is_shared ? <Share2 size={13} /> : null}
-            {library.created_at && (
-              <span className="library-created-at">
-                {text.modal.createdAt || 'Created'} {formatDateOnly(library.created_at)}
-              </span>
-            )}
-          </small>
-        </button>
-        <button
-          className="library-file-link"
-          aria-label={text.workbench.fileLibrary}
-          title={text.workbench.fileLibrary}
-          onClick={() => onOpenFiles(library)}
-        >
-          <FileText size={13} />
-        </button>
-        <button
-          className={`library-share-link ${library.is_shared ? 'active' : ''}`}
-          aria-label={locale === 'zh' ? '共享论文库' : 'Share library'}
-          title={locale === 'zh' ? '共享论文库' : 'Share library'}
-          onClick={() => onShareLibrary(library)}
-        >
-          <Users size={13} />
-        </button>
-        <button
-          className="library-edit-link"
-          aria-label={locale === 'zh' ? '编辑论文库' : 'Edit library'}
-          title={locale === 'zh' ? '编辑论文库' : 'Edit library'}
-          onClick={() => onEditLibrary(library)}
-        >
-          <Pencil size={13} />
-        </button>
-      </div>
-      {expanded && (
-        <FolderTreeNodes
-          nodes={folderTree}
-          library={library}
-          activeLibrary={activeLibrary}
-          activeFolder={activeFolder}
-          expandedFolders={expandedFolders}
-          setExpandedFolders={setExpandedFolders}
-          onOpenFolder={onOpenFolder}
-          onContextMenu={onContextMenu}
-        />
-      )}
-    </div>
-  );
-}
-
-function FolderTreeNodes({
-  nodes,
-  library,
-  activeLibrary,
-  activeFolder,
-  expandedFolders,
-  setExpandedFolders,
-  onOpenFolder,
-  onContextMenu,
-}) {
-  return (
-    <div className="library-folder-list">
-      {nodes.map((node) => {
-        const expanded = expandedFolders.has(node.path);
-        return (
-          <div className="library-folder-branch" key={node.path}>
-            <div
-              className={`library-folder-item ${activeLibrary?.id === library.id && activeFolder === node.path ? 'active' : ''}`}
-              onContextMenu={(event) => onContextMenu(event, 'folder', { library, folder: node.path })}
-            >
-              <button className="tree-toggle" disabled={!node.children.length} onClick={() => toggleSetItem(setExpandedFolders, node.path)}>
-                {node.children.length ? expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} /> : <Folder size={13} />}
-              </button>
-              <button className="folder-open-button" onClick={() => onOpenFolder(library, node.path)}>
-                <Folder size={14} /> <span>{node.name}</span>
-              </button>
-            </div>
-            {expanded && node.children.length > 0 && (
-              <FolderTreeNodes
-                nodes={node.children}
-                library={library}
-                activeLibrary={activeLibrary}
-                activeFolder={activeFolder}
-                expandedFolders={expandedFolders}
-                setExpandedFolders={setExpandedFolders}
-                onOpenFolder={onOpenFolder}
-                onContextMenu={onContextMenu}
-              />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function LibraryFileTree({
-  text,
-  files,
-  activeFile,
-  selectedFolderId,
-  expandedFolders,
-  setExpandedFolders,
-  onOpenFile,
-  onSelectFolder,
-  onContextMenu,
-  renamingFileId,
-  renamingFileName,
-  setRenamingFileName,
-  onStartRename,
-  onCommitRename,
-  activeFileDirty,
-}) {
-  if (!files.length) return <div className="file-tree-list empty" />;
-  const roots = buildFileTree(files);
-  return (
-    <div className="library-folder-list file-tree-list">
-      <FileTreeNodes
-        nodes={roots}
-        activeFile={activeFile}
-        selectedFolderId={selectedFolderId}
-        expandedFolders={expandedFolders}
-        setExpandedFolders={setExpandedFolders}
-        onOpenFile={onOpenFile}
-        onSelectFolder={onSelectFolder}
-        onContextMenu={onContextMenu}
-        renamingFileId={renamingFileId}
-        renamingFileName={renamingFileName}
-        setRenamingFileName={setRenamingFileName}
-        onStartRename={onStartRename}
-        onCommitRename={onCommitRename}
-        activeFileDirty={activeFileDirty}
-      />
-    </div>
-  );
-}
-
-function buildFileTree(files) {
-  const nodes = files.map((file) => ({ ...file, children: [] }));
-  const byId = new Map(nodes.map((file) => [file.id, file]));
-  const roots = [];
-  nodes.forEach((file) => {
-    const parent = file.parent_id ? byId.get(file.parent_id) : null;
-    if (parent) parent.children.push(file);
-    else roots.push(file);
-  });
-  const sortNodes = (items) => items.sort((a, b) => {
-    if (a.type === 'folder' && b.type !== 'folder') return -1;
-    if (a.type !== 'folder' && b.type === 'folder') return 1;
-    return String(a.name || '').localeCompare(String(b.name || ''));
-  }).map((item) => ({ ...item, children: sortNodes(item.children || []) }));
-  return sortNodes(roots);
-}
-
-function isMarkdownLibraryFile(file) {
-  return file?.type !== 'folder' && /\.md$/i.test(file?.name || '');
-}
-
-function findFirstMarkdownFile(files) {
-  const visit = (nodes) => {
-    for (const file of nodes) {
-      if (isMarkdownLibraryFile(file)) return file;
-      if (file.children?.length) {
-        const child = visit(file.children);
-        if (child) return child;
-      }
-    }
-    return null;
-  };
-  return visit(buildFileTree(files || []));
-}
-
-function FileTreeNodes({
-  nodes,
-  activeFile,
-  selectedFolderId,
-  expandedFolders,
-  setExpandedFolders,
-  onOpenFile,
-  onSelectFolder,
-  onContextMenu,
-  renamingFileId,
-  renamingFileName,
-  setRenamingFileName,
-  onStartRename,
-  onCommitRename,
-  activeFileDirty,
-}) {
-  return nodes.map((file) => {
-    const isFolder = file.type === 'folder';
-    const expanded = expandedFolders.has(file.id);
-    const active = isFolder ? selectedFolderId === file.id : activeFile?.id === file.id;
-    const renaming = renamingFileId === file.id;
-    const dirtyMark = !isFolder && activeFile?.id === file.id
-      ? <span className={`file-dirty-mark ${activeFileDirty ? 'dirty' : ''}`} />
-      : null;
-    const nameNode = renaming ? (
-      <input
-        className="file-rename-input"
-        value={renamingFileName}
-        autoFocus
-        onChange={(event) => setRenamingFileName(event.target.value)}
-        onClick={(event) => event.stopPropagation()}
-        onBlur={() => onCommitRename(file, renamingFileName)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') onCommitRename(file, renamingFileName);
-          if (event.key === 'Escape') {
-            setRenamingFileName('');
-            onStartRename(null);
-          }
-        }}
-      />
-    ) : <span>{file.name}</span>;
-    return (
-      <div className="file-tree-node" key={file.id}>
-        <div
-          className={`file-tree-item ${active ? 'active' : ''}`}
-          onContextMenu={(event) => onContextMenu(event, file)}
-          onDoubleClick={() => onStartRename(file)}
-        >
-          {isFolder ? (
-            <div
-              className="file-tree-open"
-              role="button"
-              tabIndex={0}
-              onClick={() => {
-                if (renaming) return;
-                onSelectFolder(file);
-                setExpandedFolders((items) => {
-                  const next = new Set(items);
-                  next.has(file.id) ? next.delete(file.id) : next.add(file.id);
-                  return next;
-                });
-              }}
-            >
-              {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              <Folder size={14} />
-              {nameNode}
-            </div>
-          ) : (
-            <div
-              className="file-tree-open"
-              role="button"
-              tabIndex={0}
-              onClick={() => {
-                if (!renaming) onOpenFile(file);
-              }}
-            >
-              <FileText size={14} />
-              {dirtyMark}
-              {nameNode}
-            </div>
-          )}
-        </div>
-        {isFolder && expanded && Boolean(file.children?.length) && (
-          <div className="file-tree-children">
-            <FileTreeNodes
-              nodes={file.children}
-              activeFile={activeFile}
-              selectedFolderId={selectedFolderId}
-              expandedFolders={expandedFolders}
-              setExpandedFolders={setExpandedFolders}
-              onOpenFile={onOpenFile}
-              onSelectFolder={onSelectFolder}
-              onContextMenu={onContextMenu}
-              renamingFileId={renamingFileId}
-              renamingFileName={renamingFileName}
-              setRenamingFileName={setRenamingFileName}
-              onStartRename={onStartRename}
-              onCommitRename={onCommitRename}
-              activeFileDirty={activeFileDirty}
-            />
-          </div>
-        )}
-      </div>
-    );
-  });
-}
-
-function markdownHeadingId(text, index) {
-  return `scholarx-heading-${index}-${String(text || '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-').replace(/^-|-$/g, '') || 'section'}`;
-}
-
-function parseDocumentOutline(content) {
-  const items = [];
-  let headingIndex = 0;
-  String(content || '').split('\n').forEach((line) => {
-    const md = line.match(/^(#{1,6})\s+(.+)$/);
-    const tex = line.match(/^\\(part|chapter|section|subsection|subsubsection)\*?\{(.+?)\}/);
-    if (md) {
-      items.push({ id: markdownHeadingId(md[2], headingIndex), level: md[1].length, title: md[2].trim() });
-      headingIndex += 1;
-    } else if (tex) {
-      const levels = { part: 1, chapter: 1, section: 2, subsection: 3, subsubsection: 4 };
-      items.push({ id: markdownHeadingId(tex[2], headingIndex), level: levels[tex[1]] || 2, title: tex[2].trim() });
-      headingIndex += 1;
-    }
-  });
-  return items;
-}
-
-function MarkdownRender({ content }) {
-  let headingIndex = 0;
-  const renderedContent = String(content || '').split('\n').map((line) => {
-    const tex = line.match(/^\\(part|chapter|section|subsection|subsubsection)\*?\{(.+?)\}/);
-    if (!tex) return line;
-    const marks = { part: '#', chapter: '#', section: '##', subsection: '###', subsubsection: '####' };
-    return `${marks[tex[1]] || '##'} ${tex[2]}`;
-  }).join('\n');
-  const heading = (Tag) => ({ children, ...props }) => {
-    const text = React.Children.toArray(children).join('');
-    const id = markdownHeadingId(text, headingIndex);
-    headingIndex += 1;
-    return <Tag id={id} {...props}>{children}</Tag>;
-  };
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={{
-        h1: heading('h1'),
-        h2: heading('h2'),
-        h3: heading('h3'),
-        h4: heading('h4'),
-        h5: heading('h5'),
-        h6: heading('h6'),
-      }}
-    >
-      {renderedContent}
-    </ReactMarkdown>
-  );
-}
-
-function FileOutline({ text, content, onJump }) {
-  const outline = parseDocumentOutline(content);
-  if (!outline.length) return <div className="file-outline-list empty" />;
-  return (
-    <div className="file-outline-list">
-      {outline.map((item) => (
-        <button key={item.id} style={{ paddingLeft: 8 + Math.max(0, item.level - 1) * 12 }} onClick={() => onJump(item.id)}>
-          {item.title}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function FileContextMenu({ text, menu, onClose, onNewFile, onNewFolder, onRename, onExport, onDelete }) {
-  useEffect(() => {
-    const close = () => onClose();
-    window.addEventListener('click', close);
-    return () => window.removeEventListener('click', close);
-  }, [onClose]);
-  const { ref, style } = useViewportMenuPosition(menu);
-  const parentId = menu.type === 'blank' ? menu.parentId : menu.target?.type === 'folder' ? menu.target.id : menu.target?.parent_id;
-  return (
-    <div ref={ref} className="context-menu" style={style} onClick={(event) => event.stopPropagation()}>
-      {(menu.type === 'blank' || menu.type === 'folder') && (
-        <>
-          <button onClick={() => onNewFile(parentId)}><FileText size={14} /> {text.workbench.newFile}</button>
-          <button onClick={() => onNewFolder(parentId)}><Folder size={14} /> {text.workbench.newFolder}</button>
-        </>
-      )}
-      {menu.target && (
-        <>
-          <button onClick={() => onRename(menu.target)}><Pencil size={14} /> {text.workbench.rename}</button>
-          <button onClick={() => onExport(menu.target)}><Download size={14} /> {text.workbench.exportAll}</button>
-          <button className="danger" onClick={() => onDelete(menu.target)}><Trash2 size={14} /> {text.common.confirmDelete}</button>
-        </>
-      )}
-    </div>
-  );
-}
-
-function Avatar({ user, size = 38 }) {
-  const avatarUrl = user?.user_metadata?.avatar_url;
-  return (
-    <span className="user-avatar" style={{ width: size, height: size }}>
-      {avatarUrl ? <img src={avatarUrl} alt="" /> : <User size={Math.max(16, size / 2.2)} />}
-    </span>
-  );
-}
-
-function WritingMemoryModal({ text, draft, setDraft, onSave, onClose }) {
-  return (
-    <div className="modal-backdrop light" onClick={onClose}>
-      <section className="modal memory-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-        <header>
-          <div>
-            <h2>{text.user.memoryTitle}</h2>
-            <p>{text.user.writingMemoryDesc}</p>
-          </div>
-          <button className="icon-button" aria-label={text.common.cancel} onClick={onClose}><X size={18} /></button>
-        </header>
-        <div className="memory-input-row">
-          <textarea
-            className="memory-single-textarea"
-            value={draft}
-            placeholder={text.user.memoryPlaceholder}
-            onChange={(event) => setDraft(event.target.value)}
-          />
-          <button className="primary-button" onClick={onSave}>
-            <Check size={16} /> {text.user.memoryAdd}
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function ModelSelectionModal({ text, settings, models, loading, error, onSave, onClose }) {
-  const [query, setQuery] = useState('');
-  const [draft, setDraft] = useState({
-    mode: settings.mode || 'single',
-    model: settings.model || '',
-    protocol: settings.protocol || '',
-  });
-  useEffect(() => {
-    setDraft({
-      mode: settings.mode || 'single',
-      model: settings.model || '',
-      protocol: settings.protocol || '',
-    });
-  }, [settings]);
-  const modelOptions = models.length ? [...models] : [];
-  if (!isInvalidModelId(draft.model) && !modelOptions.some((model) => model.id === draft.model)) {
-    modelOptions.unshift({ id: draft.model, name: draft.model });
-  }
-  const filteredModels = modelOptions.filter((model) => {
-    const keyword = query.trim().toLowerCase();
-    if (!keyword) return true;
-    return String(model.id || '').toLowerCase().includes(keyword)
-      || String(model.name || '').toLowerCase().includes(keyword);
-  });
-  const modelGroups = groupModels(filteredModels);
-  return (
-    <div className="modal-backdrop light" onClick={onClose}>
-      <section className="modal model-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-        <header>
-          <div>
-            <h2>{text.user.modelTitle}</h2>
-            <p>{text.user.modelDesc}</p>
-          </div>
-          <button className="icon-button" aria-label={text.common.cancel} onClick={onClose}><X size={18} /></button>
-        </header>
-        <div className="model-mode-tabs">
-          <button type="button" className={draft.mode === 'single' ? 'active' : ''} onClick={() => setDraft({ ...draft, mode: 'single' })}>
-            {text.user.modelList}
-          </button>
-          <button type="button" className={draft.mode === 'smart' ? 'active' : ''} onClick={() => setDraft({ ...draft, mode: 'smart' })}>
-            {text.user.modelSmart}
-          </button>
-        </div>
-        {draft.mode === 'single' ? (
-          <div className="model-list-panel">
-            {loading && <p className="field-hint">{text.user.modelLoading}</p>}
-            {error && <p className="field-hint warning">{error || text.user.modelLoadFailed}</p>}
-            <input
-              className="model-search-input"
-              value={query}
-              placeholder={text.user.modelSearch}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            <div className="model-option-list">
-              {modelGroups.map((group) => (
-                <section className="model-group" key={group.family}>
-                  <h3>
-                    <span>{group.family}</span>
-                    <small>{group.items.length}</small>
-                  </h3>
-                  {group.items.map((model) => (
-                    <button
-                      type="button"
-                      key={model.id}
-                      className={draft.model === model.id ? 'active' : ''}
-                      onClick={() => setDraft({ ...draft, model: model.id })}
-                    >
-                      <span>{model.name || model.id}</span>
-                      {draft.model === model.id && <Check size={15} />}
-                    </button>
-                  ))}
-                </section>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="model-smart-panel">
-            <strong>{text.user.modelSmartTitle}</strong>
-            <p>{text.user.modelSmartDesc}</p>
-          </div>
-        )}
-        <div className="modal-actions">
-          <button className="secondary-button" onClick={onClose}>{text.common.cancel}</button>
-          <button className="primary-button" onClick={() => onSave(draft)}>
-            <Check size={16} /> {text.common.save}
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function ProfilePage({ text, user, userEmail, onBack }) {
-  const [password, setPassword] = useState('');
-  const [notice, setNotice] = useState('');
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const canUpdateAccount = Boolean(supabase && user?.id);
-
-  async function uploadAvatar(file) {
-    if (!file || !canUpdateAccount) return;
-    setBusy(true);
-    setError('');
-    try {
-      const extension = file.name.split('.').pop()?.toLowerCase() || 'png';
-      const path = `${user.id}/avatar-${Date.now()}.${extension}`;
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
-      if (uploadError) throw uploadError;
-      const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-      const { error: updateError } = await supabase.auth.updateUser({ data: { avatar_url: data.publicUrl } });
-      if (updateError) throw updateError;
-      setNotice(text.user.avatarSaved);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function updatePassword() {
-    if (!canUpdateAccount || password.length < 6) return;
-    setBusy(true);
-    setError('');
-    try {
-      const { error: updateError } = await supabase.auth.updateUser({ password });
-      if (updateError) throw updateError;
-      setPassword('');
-      setNotice(text.user.passwordSaved);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <main className="account-shell">
-      <section className="account-page">
-        <button className="secondary-button account-back" onClick={onBack}><ChevronLeft size={16} /> {text.common.backToWorkbench}</button>
-        <header>
-          <div>
-            <h1>{text.user.profileTitle}</h1>
-            <p>{text.user.profileDesc}</p>
-          </div>
-          <Avatar user={user} size={72} />
-        </header>
-        {error && <div className="error-banner">{error}</div>}
-        {notice && <div className="success-banner">{notice}</div>}
-        {!canUpdateAccount && <div className="error-banner">{text.user.localOnly}</div>}
-        <article className="account-card">
-          <h2>{text.user.avatar}</h2>
-          <p>{userEmail}</p>
-          <label className="secondary-button avatar-upload">
-            <Upload size={16} /> {text.user.uploadAvatar}
-            <input type="file" accept="image/*" disabled={!canUpdateAccount || busy} onChange={(event) => uploadAvatar(event.target.files?.[0])} />
-          </label>
-        </article>
-        <article className="account-card">
-          <h2>{text.user.password}</h2>
-          <input type="password" placeholder={text.user.passwordHint} value={password} onChange={(event) => setPassword(event.target.value)} />
-          <button className="primary-button" disabled={!canUpdateAccount || busy || password.length < 6} onClick={updatePassword}>
-            <KeyRound size={16} /> {text.user.updatePassword}
-          </button>
-        </article>
-      </section>
-    </main>
-  );
-}
-
-function TrashPage({ text, userEmail, onBack }) {
-  const [papers, setPapers] = useState([]);
-  const [files, setFiles] = useState([]);
-  const [error, setError] = useState('');
-
-  async function loadTrash() {
-    try {
-      const data = await api(`/trash?owner=${encodeURIComponent(userEmail || '')}`);
-      setPapers(data.papers || []);
-      setFiles(data.files || []);
-      setError('');
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  useEffect(() => {
-    loadTrash();
-  }, [userEmail]);
-
-  async function restorePaper(paper) {
-    await api(`/libraries/${paper.library_id}/papers/${paper.id}/restore`, { method: 'POST', body: {} });
-    await loadTrash();
-  }
-
-  async function restoreFile(file) {
-    await api(`/libraries/${file.library_id}/files/${file.id}/restore`, { method: 'POST', body: {} });
-    await loadTrash();
-  }
-
-  return (
-    <main className="account-shell">
-      <section className="account-page trash-page">
-        <button className="secondary-button account-back" onClick={onBack}><ChevronLeft size={16} /> {text.common.backToWorkbench}</button>
-        <header>
-          <div>
-            <h1>{text.user.trashTitle}</h1>
-            <p>{text.user.trashDesc}</p>
-          </div>
-          <Trash2 size={32} />
-        </header>
-        {error && <div className="error-banner">{error}</div>}
-        <div className="trash-list">
-          {papers.map((paper) => (
-            <article className="trash-item" key={`${paper.library_id}-${paper.id}`}>
-              <div>
-                <strong>{paper.title}</strong>
-                <span>{paper.library_name}</span>
-              </div>
-              <button className="secondary-button" onClick={() => restorePaper(paper)}><RotateCcw size={15} /> {text.table.restore}</button>
-            </article>
-          ))}
-          {files.map((file) => (
-            <article className="trash-item" key={`file-${file.library_id}-${file.id}`}>
-              <div>
-                <strong>{file.name}</strong>
-                <span>{file.library_name || ''} · {file.type === 'folder' ? text.workbench.newFolder : text.workbench.fileLibrary}</span>
-              </div>
-              <button className="secondary-button" onClick={() => restoreFile(file)}><RotateCcw size={15} /> {text.table.restore}</button>
-            </article>
-          ))}
-          {!papers.length && !files.length && <p className="library-empty">{text.user.trashEmpty}</p>}
-        </div>
-      </section>
-    </main>
-  );
-}
-
-function HomePage({ text, locale, setLocale, stats, onDemo, userEmail, onSignOut }) {
-  const statText = stats ? `${stats.papers.toLocaleString()} ${text.brand.indexed}` : text.brand.fallback;
-
-  return (
-    <main className="home-shell">
-      <nav className="home-nav">
-        <div className="brand">
-          <div className="brand-mark"><GraduationCap size={23} /></div>
-          <div>
-            <h1>{text.brand.name}</h1>
-            <p>{statText}</p>
-          </div>
-        </div>
-        <div className="nav-actions">
-          <a href="#features">{text.home.navFeatures}</a>
-          <a href="#stories">{text.home.navStories}</a>
-          <LanguageToggle locale={locale} setLocale={setLocale} text={text} />
-          {userEmail && <span className="nav-user"><User size={15} /> {userEmail}</span>}
-          {userEmail && (
-            <button className="icon-button" title={text.common.signOut} aria-label={text.common.signOut} onClick={onSignOut}>
-              <LogOut size={17} />
-            </button>
-          )}
-          <button className="secondary-button nav-demo" onClick={onDemo}>
-            {text.common.demo} <ArrowRight size={16} />
-          </button>
-        </div>
-      </nav>
-
-      <section className="home-hero">
-        <div className="home-copy">
-          <span className="eyebrow"><Sparkles size={15} /> {text.home.eyebrow}</span>
-          <h2>{text.home.title}</h2>
-          <p>{text.home.subtitle}</p>
-          <div className="home-actions">
-            <button className="primary-button demo-button" onClick={onDemo}>
-              <Rocket size={20} /> {text.home.primary}
-            </button>
-            <a className="secondary-link" href="#features">
-              <BookOpen size={17} /> {text.home.secondary}
-            </a>
-          </div>
-        </div>
-
-        <div className="home-board" aria-label={text.home.catalogTitle}>
-          <div className="mini-window clay-pink">
-            <div className="window-dots"><span /><span /><span /></div>
-            <h3>{text.home.catalogTitle}</h3>
-            <p>{text.home.catalogMeta}</p>
-            <div className="course-preview">
-              <span>{text.home.courseA}</span>
-              <strong>CCF A</strong>
-            </div>
-            <div className="course-preview">
-              <span>{text.home.courseB}</span>
-              <strong>2025</strong>
-            </div>
-            <div className="course-preview">
-              <span>{text.home.courseC}</span>
-              <strong>PDF</strong>
-            </div>
-          </div>
-          <div className="mini-window clay-mint">
-            <div className="course-icon"><BarChart3 size={22} /></div>
-            <h3>{text.home.progressTitle}</h3>
-            <p>{text.home.progressMeta}</p>
-            <ProgressRow label={text.home.progressDone} value="72%" />
-            <ProgressRow label={text.home.progressPdf} value="48%" />
-            <ProgressRow label={text.home.progressDraft} value="36%" />
-          </div>
-        </div>
-      </section>
-
-      <section id="features" className="home-section feature-grid">
-        <article className="home-card">
-          <BookMarked size={25} />
-          <h3>{text.home.catalogTitle}</h3>
-          <p>{text.home.catalogDesc}</p>
-        </article>
-        <article className="home-card">
-          <BarChart3 size={25} />
-          <h3>{text.home.progressTitle}</h3>
-          <p>{text.home.progressDesc}</p>
-        </article>
-        <article className="home-card">
-          <Bot size={25} />
-          <h3>{text.agent.title}</h3>
-          <p>{text.agent.placeholder}</p>
-        </article>
-      </section>
-
-      <section id="stories" className="home-section story-band">
-        <div>
-          <span className="eyebrow"><Users size={15} /> {text.home.testimonialTitle}</span>
-          <h2>{text.home.ctaTitle}</h2>
-          <p>{text.home.ctaDesc}</p>
-        </div>
-        <div className="story-stack">
-          <div className="testimonial-card"><Trophy size={20} /><p>{text.home.testimonialOne}</p><small>{text.home.progressDraft}</small></div>
-          <div className="testimonial-card"><Tag size={20} /><p>{text.home.testimonialTwo}</p><small>{text.home.progressDone}</small></div>
-        </div>
-      </section>
-
-      <section className="home-cta">
-        <div>
-          <h2>{text.home.ctaTitle}</h2>
-          <p>{text.home.ctaDesc}</p>
-        </div>
-        <button className="primary-button demo-button" onClick={onDemo}>
-          <Rocket size={20} /> {text.home.ctaButton}
-        </button>
-      </section>
-    </main>
-  );
-}
-
-function ProgressRow({ label, value }) {
-  return (
-    <div className="progress-row">
-      <div><span>{label}</span><strong>{value}</strong></div>
-      <div className="progress-track"><span style={{ width: value }} /></div>
-    </div>
-  );
-}
-
-function AuthPage({ text, locale, setLocale, onHome, onAuthed }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [code, setCode] = useState('');
-  const [mode, setMode] = useState('signin');
-  const [pendingVerification, setPendingVerification] = useState(false);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  async function submitAuth() {
-    setError('');
-    setBusy(true);
-    try {
-      if (!supabase) {
-        if (!email.trim()) throw new Error(text.auth.noSupabase);
-        localStorage.setItem('scholarx.localUser', email.trim());
-        onAuthed({ user: { email: email.trim() } });
-        return;
-      }
-      if (mode === 'signup') {
-        const { error: signUpError } = await supabase.auth.signUp({ email, password });
-        if (signUpError) throw signUpError;
-        setPendingVerification(true);
-        return;
-      }
-      const status = await api(`/auth/email-status?email=${encodeURIComponent(email.trim())}`);
-      if (!status.exists) {
-        setMode('signup');
-        setError(text.auth.pleaseRegister);
-        return;
-      }
-      if (!status.confirmed) {
-        setMode('signup');
-        setPendingVerification(false);
-        setError(text.auth.pleaseFinishRegister);
-        return;
-      }
-      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
-      if (authError) {
-        if (authError.message?.toLowerCase().includes('email not confirmed')) {
-          setMode('signup');
-          setPendingVerification(false);
-          setError(text.auth.pleaseFinishRegister);
-          return;
-        }
-        if (
-          authError.message?.toLowerCase().includes('invalid login credentials')
-          || authError.code === 'invalid_credentials'
-        ) {
-          setMode('signup');
-          setError(text.auth.pleaseRegister);
-          return;
-        }
-        throw authError;
-      }
-      if (data.session) onAuthed(data.session);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function verifyCode() {
-    setError('');
-    setBusy(true);
-    try {
-      const { data, error: verifyError } = await supabase.auth.verifyOtp({
-        email,
-        token: code.trim(),
-        type: 'signup',
-      });
-      if (verifyError) {
-        if (verifyError.message?.toLowerCase().includes('unexpected failure')) {
-          throw new Error(text.auth.authServiceBusy);
-        }
-        throw verifyError;
-      }
-      onAuthed(data.session || { user: data.user });
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function resendCode() {
-    setError('');
-    setBusy(true);
-    try {
-      const { error: signUpError } = await supabase.auth.signUp({ email, password });
-      if (signUpError) throw signUpError;
-      setCode('');
-      setError(text.auth.codeResent);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <main className="auth-shell">
-      <section className="auth-card">
-        <div className="brand">
-          <div className="brand-mark"><GraduationCap size={23} /></div>
-          <div>
-            <h1>{text.brand.name}</h1>
-            <p>{text.auth.subtitle}</p>
-          </div>
-        </div>
-        <div>
-          <h2>{pendingVerification ? text.auth.verifyTitle : text.auth.title}</h2>
-          <p>{pendingVerification ? text.auth.verifyDesc : text.auth.subtitle}</p>
-        </div>
-        {error && <div className="error-banner">{error}</div>}
-        {!pendingVerification ? (
-          <>
-            <label>
-              <span>{text.auth.email}</span>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            </label>
-            <label>
-              <span>{text.auth.password}</span>
-              <input type="password" placeholder={text.auth.passwordHint} value={password} onChange={(e) => setPassword(e.target.value)} />
-            </label>
-            <div className="segmented">
-              <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => setMode('signin')}>{text.auth.signIn}</button>
-              <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>{text.auth.signUp}</button>
-            </div>
-            <button className="primary-button" disabled={busy || !email.trim()} onClick={submitAuth}>
-              <KeyRound size={17} /> {mode === 'signin' ? text.auth.signIn : text.auth.signUp}
-            </button>
-          </>
-        ) : (
-          <>
-            <label>
-              <span>{text.auth.code}</span>
-              <input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" />
-            </label>
-            <button className="primary-button" disabled={busy || !code.trim()} onClick={verifyCode}>
-              <KeyRound size={17} /> {text.auth.verify}
-            </button>
-            <button className="secondary-button" disabled={busy || !email.trim()} onClick={resendCode}>
-              <RotateCcw size={17} /> {text.auth.resendCode}
-            </button>
-          </>
-        )}
-        <div className="auth-actions">
-          <button className="secondary-button" onClick={onHome}><Home size={16} /> {text.common.home}</button>
-          <LanguageToggle locale={locale} setLocale={setLocale} text={text} />
-        </div>
-      </section>
-    </main>
-  );
-}
-
-function LanguageToggle({ locale, setLocale, text }) {
-  return (
-    <button
-      className="language-toggle"
-      type="button"
-      aria-label={text.common.language}
-      onClick={() => setLocale(locale === 'zh' ? 'en' : 'zh')}
-    >
-      {text.common.switchLanguage}
-    </button>
-  );
-}
-
 function ColumnCollapseToggle({ side, columns, setColumns, collapsed, onToggle }) {
   const draggedRef = useRef(false);
-  const label = side === 'left'
-    ? (collapsed ? '>' : '<')
-    : (collapsed ? '<' : '>');
 
   function startDrag(event) {
     if (collapsed) return;
@@ -4779,2024 +3449,8 @@ function ColumnCollapseToggle({ side, columns, setColumns, collapsed, onToggle }
       onMouseDown={startDrag}
       onClick={handleClick}
       aria-label={collapsed ? '展开侧栏' : '收起侧栏'}
-    >
-      {label}
-    </button>
+    />
   );
 }
 
-function SortButton({ label, column, tableFilters, setTableFilters }) {
-  const sorts = normalizeTableSorts(tableFilters);
-  const sortIndex = sorts.findIndex((item) => item.column === column);
-  const active = sortIndex >= 0;
-  const direction = active ? sorts[sortIndex].dir : '';
-  return (
-    <button
-      type="button"
-      className={`sort-button ${active ? 'active' : ''}`}
-      onClick={() => setTableFilters((current) => toggleTableSort(current, column))}
-      title="点击切换排序：默认方向、反方向、取消"
-    >
-      {label}
-      {active ? <span className="sort-indicator">{direction === 'asc' ? '↑' : '↓'}{sorts.length > 1 ? sortIndex + 1 : ''}</span> : <ArrowUpDown size={13} />}
-    </button>
-  );
-}
-
-function PdfJsViewer({ text, url, title }) {
-  const [pdf, setPdf] = useState(null);
-  const [error, setError] = useState('');
-  const [scale, setScale] = useState(1.4);
-
-  useEffect(() => {
-    let cancelled = false;
-    setPdf(null);
-    setError('');
-    const task = pdfjsLib.getDocument({ url: pdfFetchUrl(url) });
-    task.promise
-      .then((document) => {
-        if (!cancelled) setPdf(document);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err?.message || text.workbench.pdfLoadError);
-      });
-    return () => {
-      cancelled = true;
-      task.destroy();
-    };
-  }, [url, text.workbench.pdfLoadError]);
-
-  if (error) {
-    return (
-      <div className="pdf-js-state">
-        <FileText size={24} />
-        <strong>{text.workbench.pdfLoadError}</strong>
-        <p>{error}</p>
-      </div>
-    );
-  }
-
-  if (!pdf) {
-    return (
-      <div className="pdf-js-state">
-        <FileText size={24} />
-        <strong>{text.workbench.pdfLoading}</strong>
-      </div>
-    );
-  }
-
-  const pages = Array.from({ length: pdf.numPages }, (_item, index) => index + 1);
-  return (
-    <div className="pdf-js-wrap" aria-label={title}>
-      <div className="pdf-js-toolbar">
-        <span>{pdf.numPages} pages</span>
-        <button className="icon-button" onClick={() => setScale((value) => Math.max(0.7, Number((value - 0.1).toFixed(2))))}>-</button>
-        <strong>{Math.round(scale * 100)}%</strong>
-        <button className="icon-button" onClick={() => setScale((value) => Math.min(2.2, Number((value + 0.1).toFixed(2))))}>+</button>
-      </div>
-      <div className="pdf-js-pages">
-        {pages.map((pageNumber) => (
-          <PdfJsPage key={`${pageNumber}-${scale}`} pdf={pdf} pageNumber={pageNumber} scale={scale} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function PdfJsPage({ pdf, pageNumber, scale }) {
-  const canvasRef = useRef(null);
-  const [textItems, setTextItems] = useState([]);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  const [renderScale, setRenderScale] = useState(1);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-    let renderTask = null;
-    setTextItems([]);
-    setError('');
-
-    async function renderPage() {
-      try {
-        const page = await pdf.getPage(pageNumber);
-        if (cancelled) return;
-        const viewport = page.getViewport({ scale });
-        const canvas = canvasRef.current;
-        const context = canvas?.getContext('2d');
-        if (!canvas || !context) return;
-        const outputScale = Math.max(2, Math.min(window.devicePixelRatio || 1, 4));
-        const cssWidth = Math.round(viewport.width);
-        const cssHeight = Math.round(viewport.height);
-        const renderViewport = page.getViewport({ scale: scale * outputScale });
-        canvas.width = Math.ceil(renderViewport.width);
-        canvas.height = Math.ceil(renderViewport.height);
-        canvas.style.width = `${cssWidth}px`;
-        canvas.style.height = `${cssHeight}px`;
-        context.setTransform(1, 0, 0, 1, 0, 0);
-        context.imageSmoothingEnabled = false;
-        setSize({ width: cssWidth, height: cssHeight });
-        setRenderScale(outputScale);
-        renderTask = page.render({
-          canvasContext: context,
-          viewport: renderViewport,
-        });
-        const [textContent] = await Promise.all([page.getTextContent(), renderTask.promise]);
-        if (cancelled) return;
-        const items = (textContent.items || [])
-          .filter((item) => String(item.str || '').trim())
-          .map((item, index) => {
-            const transform = pdfjsLib.Util.transform(viewport.transform, item.transform);
-            const angle = Math.atan2(transform[1], transform[0]);
-            const fontHeight = Math.hypot(transform[2], transform[3]) || 10;
-            const left = transform[4];
-            const top = transform[5] - fontHeight;
-            return {
-              id: `${pageNumber}-${index}`,
-              text: item.str,
-              left,
-              top,
-              width: Math.max(item.width * scale, 1),
-              height: fontHeight,
-              angle,
-              fontName: item.fontName,
-              hasEOL: Boolean(item.hasEOL),
-            };
-          });
-        setTextItems(items);
-      } catch (err) {
-        if (!cancelled && err?.name !== 'RenderingCancelledException') {
-          setError(err?.message || 'Page render failed');
-        }
-      }
-    }
-
-    renderPage();
-    return () => {
-      cancelled = true;
-      if (renderTask) renderTask.cancel();
-    };
-  }, [pdf, pageNumber, scale]);
-
-  return (
-    <section className="pdf-js-page" style={{ width: size.width || undefined, minHeight: size.height || 520 }}>
-      <canvas ref={canvasRef} />
-      <div className="pdf-js-text-layer" style={{ width: size.width, height: size.height }}>
-        {textItems.map((item) => (
-          <span
-            key={item.id}
-            style={{
-              left: item.left,
-              top: item.top,
-              width: item.width,
-              height: item.height,
-              fontSize: item.height,
-              transform: `rotate(${item.angle}rad)`,
-              fontFamily: item.fontName || 'sans-serif',
-            }}
-          >
-            {item.text}{item.hasEOL ? '\n' : ' '}
-          </span>
-        ))}
-      </div>
-      <span className="pdf-js-page-number" title={`render ${renderScale}x`}>{pageNumber}</span>
-      {error && <span className="pdf-js-page-error">{error}</span>}
-    </section>
-  );
-}
-
-function PdfTranslationPopup({ text, popup, onClose }) {
-  const style = popup.x && popup.y
-    ? { left: `${popup.x}px`, top: `${popup.y}px` }
-    : {};
-  return (
-    <section
-      className={`pdf-translation-popup ${popup.x && popup.y ? 'anchored' : ''}`}
-      style={style}
-      onMouseDown={(event) => event.stopPropagation()}
-      onMouseUp={(event) => event.stopPropagation()}
-    >
-      <button
-        className="translation-close"
-        onMouseDown={(event) => event.stopPropagation()}
-        onMouseUp={(event) => event.stopPropagation()}
-        onClick={(event) => {
-          event.stopPropagation();
-          onClose();
-        }}
-        aria-label={text.common.cancel}
-      >
-        <X size={12} />
-      </button>
-      <div className="translation-output">
-        {popup.error ? (
-          <p className="error-text">{popup.error}</p>
-        ) : popup.content ? (
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{popup.content}</ReactMarkdown>
-        ) : (
-          <p className="typing-dot">{text.workbench.translating}</p>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function PaginationBar({ text, tableFilters, total, onChange, onDownload, selectedCount, citationStatus, onExport, onRetryCitations }) {
-  const [downloadOpen, setDownloadOpen] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
-  const downloadRef = useRef(null);
-  const exportRef = useRef(null);
-  const pageCount = Math.max(1, Math.ceil((total || 0) / tableFilters.page_size));
-  const page = Math.min(tableFilters.page, pageCount);
-  const pages = Array.from(new Set([1, page - 1, page, page + 1, pageCount]))
-    .filter((item) => item >= 1 && item <= pageCount)
-    .sort((a, b) => a - b);
-  const exportDisabled = !selectedCount || !citationStatus?.exportable;
-  const exportTitle = selectedCount
-    ? citationStatus?.exportable
-      ? text.workbench.citationReady
-      : `${text.workbench.citationFetching}: ${citationStatus?.ready || 0}/${citationStatus?.total || selectedCount}`
-    : text.workbench.exportCitations;
-  useClickOutside(downloadRef, downloadOpen, () => setDownloadOpen(false));
-  useClickOutside(exportRef, exportOpen, () => setExportOpen(false));
-  return (
-    <footer className="pagination-bar">
-      <div className="download-actions">
-        <div className="dropdown-action" ref={downloadRef}>
-          <button className="secondary-button compact-download" disabled={!selectedCount} onClick={() => setDownloadOpen((open) => !open)}>
-            <Download size={15} /> {text.workbench.download} <ChevronDown size={13} />
-          </button>
-          {downloadOpen && !!selectedCount && (
-            <div className="dropdown-menu">
-              <button onClick={() => { setDownloadOpen(false); onDownload('csv'); }}>{text.workbench.downloadCsv}</button>
-              <button onClick={() => { setDownloadOpen(false); onDownload('xlsx'); }}>{text.workbench.downloadExcel}</button>
-            </div>
-          )}
-        </div>
-        <div className="dropdown-action" ref={exportRef}>
-          <button className="secondary-button compact-download" title={exportTitle} disabled={exportDisabled} onClick={() => setExportOpen((open) => !open)}>
-            <FileText size={15} /> {text.workbench.exportCitations} <ChevronDown size={13} />
-          </button>
-          {exportOpen && !exportDisabled && (
-            <div className="dropdown-menu">
-              <button onClick={() => { setExportOpen(false); onExport('bib'); }}>{text.workbench.exportBib}</button>
-              <button onClick={() => { setExportOpen(false); onExport('apa'); }}>{text.workbench.exportApa}</button>
-              <button onClick={() => { setExportOpen(false); onExport('mla'); }}>{text.workbench.exportMla}</button>
-              <button onClick={() => { setExportOpen(false); onExport('gbt'); }}>{text.workbench.exportGbt}</button>
-            </div>
-          )}
-        </div>
-        {selectedCount > 0 && (citationStatus?.failed || 0) > 0 && (
-          <button className="secondary-button compact-download" onClick={onRetryCitations}>
-            {text.workbench.citationRetry}
-          </button>
-        )}
-      </div>
-      <div className="scholar-pages">
-        <button className="icon-button" disabled={page <= 1} title={text.workbench.previous} onClick={() => onChange({ ...tableFilters, page: page - 1 })}>
-          <ChevronLeft size={17} />
-        </button>
-        {pages.map((item, index) => (
-          <React.Fragment key={item}>
-            {index > 0 && item - pages[index - 1] > 1 && <span className="page-gap">...</span>}
-            <button className={`page-number ${item === page ? 'active' : ''}`} onClick={() => onChange({ ...tableFilters, page: item })}>{item}</button>
-          </React.Fragment>
-        ))}
-        <button className="icon-button" disabled={page >= pageCount} title={text.workbench.next} onClick={() => onChange({ ...tableFilters, page: page + 1 })}>
-          <ChevronRight size={17} />
-        </button>
-        <select value={tableFilters.page_size} onChange={(e) => onChange({ ...tableFilters, page_size: Number(e.target.value), page: 1 })}>
-          <option value="10">10</option>
-          <option value="25">25</option>
-          <option value="50">50</option>
-          <option value="100">100</option>
-        </select>
-      </div>
-    </footer>
-  );
-}
-
-function ContextMenu({ text, menu, folders, currentFolder, onClose, onEditLibrary, onNewFolder, onNewChildFolder, onDeleteFolder, onDeleteLibrary, onPinLibrary, onMovePaper, onCopyPaper, onRelinkPaper, onOpenDetails, onRenamePaper, onDeletePaper }) {
-  const [openSubmenu, setOpenSubmenu] = useState(null);
-  useEffect(() => {
-    window.addEventListener('click', onClose);
-    return () => window.removeEventListener('click', onClose);
-  }, [onClose]);
-  const { ref, style } = useViewportMenuPosition(menu);
-  const submenuSide = menu.x > window.innerWidth - 420 ? 'left' : 'right';
-  const moveTargets = menu.type === 'paper' ? folders.filter((folder) => folder !== currentFolder) : [];
-  const copyTargets = menu.type === 'paper' ? folders.filter((folder) => !paperFolderMarkers(menu.target).has(folderMarker(folder))) : [];
-
-  return (
-    <div ref={ref} className="context-menu" style={style} onClick={(event) => event.stopPropagation()}>
-      {menu.type === 'library' && (
-        <>
-          <button onClick={() => onEditLibrary(menu.target)}><Pencil size={14} /> 修改论文库</button>
-          <button onClick={() => onPinLibrary(menu.target)}><ChevronUp size={14} /> 置顶</button>
-          <button onClick={() => onNewFolder(menu.target)}><Plus size={14} /> 新建子目录</button>
-          <button className="danger" onClick={() => onDeleteLibrary(menu.target)}><Trash2 size={14} /> {text.library.delete}</button>
-        </>
-      )}
-      {menu.type === 'folder' && (
-        <>
-          <div className="context-menu-title">{menu.target.folder}</div>
-          <button onClick={() => onNewChildFolder(menu.target.library, menu.target.folder)}><Plus size={14} /> {text.modal.addChildFolder}</button>
-          <button className="danger" onClick={() => onDeleteFolder(menu.target.library, menu.target.folder)}><Trash2 size={14} /> {text.table.deleteFolder}</button>
-        </>
-      )}
-      {menu.type === 'paper' && (
-        <>
-          <button onClick={() => onOpenDetails(menu.target)}><HelpCircle size={14} /> {text.table.details}</button>
-          <div
-            className="context-submenu-wrap"
-            onMouseEnter={() => setOpenSubmenu('move')}
-          >
-            <button className="context-submenu-trigger" onClick={() => setOpenSubmenu(openSubmenu === 'move' ? null : 'move')}>
-              <Folder size={14} /> {text.table.moveToFolder} <ChevronRight size={14} />
-            </button>
-            {openSubmenu === 'move' && (
-              <div className={`context-submenu ${submenuSide}`}>
-                {((currentFolder && currentFolder !== '__all__') || menu.target.user_columns_json?.folder) && (
-                  <button onClick={() => onMovePaper(menu.target, '')}><Folder size={14} /> {text.table.moveToRoot}</button>
-                )}
-                {moveTargets.map((folder) => (
-                  <button className="context-folder-target" style={{ paddingLeft: 12 + folder.split('/').length * 10 }} key={folder} onClick={() => onMovePaper(menu.target, folder)}>
-                    <Folder size={14} /> {folderLeaf(folder)}
-                  </button>
-                ))}
-                {moveTargets.length === 0 && <button disabled>{text.table.noFolder}</button>}
-              </div>
-            )}
-          </div>
-          <div
-            className="context-submenu-wrap"
-            onMouseEnter={() => setOpenSubmenu('copy')}
-          >
-            <button className="context-submenu-trigger" onClick={() => setOpenSubmenu(openSubmenu === 'copy' ? null : 'copy')}>
-              <Copy size={14} /> {text.table.copyToFolder} <ChevronRight size={14} />
-            </button>
-            {openSubmenu === 'copy' && (
-              <div className={`context-submenu ${submenuSide}`}>
-                {copyTargets.map((folder) => (
-                  <button className="context-folder-target" style={{ paddingLeft: 12 + folder.split('/').length * 10 }} key={`copy-${folder}`} onClick={() => onCopyPaper(menu.target, folder)}>
-                    <Copy size={14} /> {folderLeaf(folder)}
-                  </button>
-                ))}
-                {copyTargets.length === 0 && <button disabled>{text.table.noFolder}</button>}
-              </div>
-            )}
-          </div>
-          {menu.target.pdf_url && (
-            <button onClick={() => onRelinkPaper(menu.target)}><Search size={14} /> {text.table.relink}</button>
-          )}
-          {isUnmatchedUploadedPaper(menu.target) && (
-            <button onClick={() => onRenamePaper(menu.target)}><Pencil size={14} /> {text.table.renamePaper}</button>
-          )}
-          <button className="danger" onClick={() => onDeletePaper(menu.target)}><Trash2 size={14} /> {text.table.remove}</button>
-        </>
-      )}
-    </div>
-  );
-}
-
-function useViewportMenuPosition(menu) {
-  const ref = useRef(null);
-  const [style, setStyle] = useState({ left: menu.x, top: menu.y });
-
-  useLayoutEffect(() => {
-    const element = ref.current;
-    if (!element) {
-      setStyle({ left: menu.x, top: menu.y });
-      return;
-    }
-
-    const margin = 8;
-    const rect = element.getBoundingClientRect();
-    let left = menu.x;
-    let top = menu.y;
-
-    if (left + rect.width + margin > window.innerWidth) {
-      left = Math.max(margin, window.innerWidth - rect.width - margin);
-    }
-    if (top + rect.height + margin > window.innerHeight) {
-      top = menu.y - rect.height - margin;
-      if (top < margin) {
-        top = Math.max(margin, window.innerHeight - rect.height - margin);
-      }
-    }
-
-    setStyle({ left, top });
-  }, [menu]);
-
-  return { ref, style };
-}
-
-function AgentChat({
-  text,
-  messages,
-  busy,
-  selectedCount,
-  skills,
-  activeSkillIds,
-  onInstallSkill,
-  onUninstallSkill,
-  onToggleSkill,
-  onSend,
-  onStop,
-  draft,
-  setDraft,
-  sessions,
-  activeChatId,
-  libraries,
-  activeLibrary,
-  collapsed,
-  onSelectChat,
-  onNewChat,
-  editingMessageIndex,
-  editingMessageDraft,
-  setEditingMessageDraft,
-  onEditMessage,
-  onResendMessage,
-  onCancelEdit,
-  onDeleteMessage,
-  onDeleteChat,
-  onExecuteAction,
-  onOpenPaperRef,
-}) {
-  const subtitle = selectedCount
-    ? `${text.agent.selectedPrefix}${selectedCount}${text.agent.selectedSuffix}`
-    : activeSkillIds.length
-      ? `${text.agent.skillActivePrefix}${activeSkillIds.length}${text.agent.skillActiveSuffix}`
-      : text.agent.context;
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [skillsOpen, setSkillsOpen] = useState(false);
-  const [historyQuery, setHistoryQuery] = useState('');
-  const historyActionsRef = useRef(null);
-  const historyPopoverRef = useRef(null);
-  const hasStreamingMessage = messages.some((message) => message.streaming);
-  const historySearch = historyQuery.trim().toLowerCase();
-  const filteredSessions = sessions
-    .filter(hasUserMessages)
-    .filter((chat) => (
-      !historySearch
-      || (chat.title || '').toLowerCase().includes(historySearch)
-      || (chat.messages || []).some((message) => String(message.content || '').toLowerCase().includes(historySearch))
-    ));
-  const libraryIds = new Set((libraries || []).map((library) => library.id));
-  const historyGroups = (libraries || [])
-    .map((library) => ({
-      library,
-      chats: filteredSessions.filter((chat) => chatBelongsToLibrary(chat, library.id)),
-    }))
-    .filter((group) => group.chats.length || !historySearch || activeLibrary?.id === group.library.id);
-  const unassignedChats = filteredSessions.filter((chat) => !chatLibraryId(chat) || !libraryIds.has(chatLibraryId(chat)));
-  useClickOutside([historyActionsRef, historyPopoverRef], historyOpen, () => setHistoryOpen(false));
-
-  return (
-    <aside className={`agent-pane deepseek-pane ${collapsed ? 'collapsed' : ''}`}>
-      <div className="deep-chat-main">
-        <header className="deep-chat-header">
-          <div>
-            <h2>{text.agent.title}</h2>
-            <p>{subtitle}</p>
-          </div>
-          <div className="deep-chat-actions" ref={historyActionsRef}>
-            <button className="icon-button" onClick={() => setHistoryOpen(!historyOpen)} aria-label={text.agent.history}><History size={18} /></button>
-            <button className="icon-button" onClick={() => setSkillsOpen(true)} aria-label={text.agent.skills} title={text.agent.skills}><Puzzle size={18} /></button>
-            <button className="icon-button" onClick={onNewChat} aria-label={text.agent.newChat}><Plus size={18} /></button>
-          </div>
-        </header>
-        {historyOpen && (
-          <section className="history-popover" ref={historyPopoverRef}>
-            <input placeholder="Search" value={historyQuery} onChange={(e) => setHistoryQuery(e.target.value)} />
-            <div className="chat-history-list grouped">
-              {historyGroups.map(({ library, chats }) => (
-                <section className="chat-history-group" key={library.id}>
-                  <h3>
-                    <span>{library.name}</span>
-                    <small>{chats.length}</small>
-                  </h3>
-                  {chats.length ? chats.map((chat) => (
-                    <div className={`chat-history-item ${chat.id === activeChatId ? 'active' : ''}`} key={chat.id}>
-                      <button
-                        className="chat-history-open"
-                        onClick={() => {
-                          onSelectChat(chat);
-                          setHistoryOpen(false);
-                        }}
-                      >
-                        {chat.title || text.agent.newChat}
-                      </button>
-                      <button className="chat-history-delete" title={text.agent.deleteChat} aria-label={text.agent.deleteChat} onClick={() => onDeleteChat(chat.id)}>
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  )) : (
-                    <div className="chat-history-empty">{text.agent.emptyLibraryHistory}</div>
-                  )}
-                </section>
-              ))}
-              {unassignedChats.length > 0 && (
-                <section className="chat-history-group">
-                  <h3>
-                    <span>{text.agent.unassignedHistory}</span>
-                    <small>{unassignedChats.length}</small>
-                  </h3>
-                  {unassignedChats.map((chat) => (
-                    <div className={`chat-history-item ${chat.id === activeChatId ? 'active' : ''}`} key={chat.id}>
-                      <button
-                        className="chat-history-open"
-                        onClick={() => {
-                          onSelectChat(chat);
-                          setHistoryOpen(false);
-                        }}
-                      >
-                        {chat.title || text.agent.newChat}
-                      </button>
-                      <button className="chat-history-delete" title={text.agent.deleteChat} aria-label={text.agent.deleteChat} onClick={() => onDeleteChat(chat.id)}>
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </section>
-              )}
-            </div>
-          </section>
-        )}
-        {skillsOpen && (
-          <SkillModal
-            text={text}
-            skills={skills}
-            activeSkillIds={activeSkillIds}
-            onInstall={onInstallSkill}
-            onUninstall={onUninstallSkill}
-            onToggle={onToggleSkill}
-            onClose={() => setSkillsOpen(false)}
-          />
-        )}
-        <div className="deep-message-list">
-          {messages.map((message, index) => (
-            <article key={`${message.role}-${index}`} className={`deep-message ${message.role}`}>
-              <div className="message-avatar">{message.role === 'user' ? <User size={16} /> : <Bot size={16} />}</div>
-              <div className="message-content-wrap">
-                {message.role === 'assistant' && !message.error && Boolean(message.trace?.length) && (
-                  <ThoughtProcess text={text} trace={message.trace || []} streaming={Boolean(message.streaming)} />
-                )}
-                {editingMessageIndex === index ? (
-                  <div className="message-editor">
-                    <textarea value={editingMessageDraft} onChange={(event) => setEditingMessageDraft(event.target.value)} />
-                    <div className="message-editor-actions">
-                      <button onClick={onCancelEdit}>{text.common.cancel}</button>
-                      <button
-                        disabled={
-                          busy
-                          || !editingMessageDraft.trim()
-                          || editingMessageDraft.trim() === String(message.content || '').trim()
-                        }
-                        onClick={onResendMessage}
-                      >
-                        {text.agent.resend}
-                      </button>
-                    </div>
-                  </div>
-                ) : (message.role === 'user' || message.content || message.error || !message.streaming) ? (
-                  <div className={`message-bubble markdown-body ${message.error ? 'error' : ''}`}>
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {message.content || ''}
-                    </ReactMarkdown>
-                  </div>
-                ) : null}
-                {message.role === 'assistant' && !message.streaming && !message.error && Boolean(message.paper_refs?.length) && (
-                  <MessageMetaSection title={text.agent.references} count={message.paper_refs.length}>
-                    <div className="paper-ref-list">
-                      {message.paper_refs.map((paperRef) => (
-                        <button
-                          key={paperRef.ref}
-                          type="button"
-                          disabled={!paperRef.pdf_url}
-                          onClick={() => onOpenPaperRef?.(paperRef)}
-                        >
-                          <span>{paperRef.ref}</span>
-                          {paperRef.title}
-                        </button>
-                      ))}
-                    </div>
-                  </MessageMetaSection>
-                )}
-                {message.role === 'assistant' && !message.streaming && !message.error && Boolean(message.pdf_evidence?.length) && (
-                  <MessageMetaSection title={text.agent.evidence} count={message.pdf_evidence.length} variant="evidence">
-                    <div className="evidence-chip-list">
-                      {message.pdf_evidence.map((item) => (
-                        <span key={item.citation} title={item.text}>
-                          {item.citation} · {item.method || 'retrieval'} · chunk {(item.chunk_no ?? 0) + 1}
-                        </span>
-                      ))}
-                    </div>
-                  </MessageMetaSection>
-                )}
-                {message.role === 'assistant' && !message.error && Boolean(message.tool_actions?.length) && (
-                  <div className="message-tool-actions">
-                    {message.tool_actions.map((action) => (
-                      <button
-                        key={action.id || `${action.type}-${action.label}`}
-                        className="secondary-button"
-                        onClick={() => onExecuteAction(action)}
-                      >
-                        {action.type === 'open_file' ? <FileText size={14} /> : <Copy size={14} />}
-                        {action.label || action.type}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {editingMessageIndex !== index && (
-                  <div className="message-actions">
-                    {message.role === 'user' && <button onClick={() => onEditMessage(index, message.content)}><Pencil size={13} /> 编辑</button>}
-                    <button onClick={() => onDeleteMessage(index)}><Trash2 size={13} /> 删除</button>
-                  </div>
-                )}
-              </div>
-            </article>
-          ))}
-          {busy && !hasStreamingMessage && (
-            <article className="deep-message assistant">
-              <div className="message-avatar"><Bot size={16} /></div>
-              <div className="message-bubble thinking" aria-live="polite">
-                <span>{text.agent.thinking}</span>
-                <span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>
-              </div>
-            </article>
-          )}
-        </div>
-        <div className="deep-composer">
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder={text.agent.placeholder}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                onSend(draft);
-              }
-            }}
-          />
-          <button
-            className={`send-button ${hasStreamingMessage ? 'stop' : ''}`}
-            disabled={hasStreamingMessage ? false : busy || !draft.trim()}
-            onClick={() => (hasStreamingMessage ? onStop() : onSend(draft))}
-            aria-label={hasStreamingMessage ? text.agent.stop : text.agent.send}
-            title={hasStreamingMessage ? text.agent.stop : text.agent.send}
-          >
-            {hasStreamingMessage ? <X size={18} /> : <Send size={18} />}
-          </button>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-function ThoughtProcess({ text, trace = [], streaming = false }) {
-  const [expanded, setExpanded] = useState(false);
-  const latest = trace[trace.length - 1] || {};
-  const currentText = latest.detail || latest.title || latest.stage || text.agent.thinking;
-  const statusText = streaming ? text.agent.thinking : text.agent.thinkingDone;
-
-  return (
-    <section className={`thought-process ${streaming ? 'running' : 'done'} ${expanded ? 'expanded' : ''}`}>
-      <button
-        type="button"
-        className="thought-summary"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
-      >
-        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        <span className="thought-status">{statusText}</span>
-        {!expanded && (
-          <span className="thought-current" key={`${trace.length}-${latest.stage || 'step'}`}>
-            <span>{streaming ? currentText : text.agent.thinkingDone}</span>
-          </span>
-        )}
-      </button>
-      {expanded && (
-        <div className="thought-detail-list">
-          {trace.map((item, itemIndex) => (
-            <div className="thought-detail-item" key={`${item.stage || 'step'}-${itemIndex}`}>
-              <span>{itemIndex + 1}. {item.title || item.stage || `Step ${itemIndex + 1}`}</span>
-              <small>{item.detail || ''}</small>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function MessageMetaSection({ title, count, variant = '', children }) {
-  const [expanded, setExpanded] = useState(false);
-  return (
-    <section className={`message-citations ${variant} ${expanded ? 'expanded' : ''}`}>
-      <button
-        type="button"
-        className="message-citations-toggle"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
-      >
-        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        <strong>{title}</strong>
-        {Number.isFinite(count) && <span>{count}</span>}
-      </button>
-      {expanded && (
-        <div className="message-citations-body">
-          {children}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function SkillModal({ text, skills, activeSkillIds, onInstall, onUninstall, onToggle, onClose }) {
-  return (
-    <div className="modal-backdrop light" onClick={onClose}>
-      <section className="modal skill-modal" role="dialog" aria-modal="true" aria-labelledby="skill-modal-title" onClick={(event) => event.stopPropagation()}>
-        <header>
-          <div>
-            <h2 id="skill-modal-title">{text.agent.skills}</h2>
-            <p>{text.agent.skillActivePrefix}{activeSkillIds.length}{text.agent.skillActiveSuffix}</p>
-          </div>
-          <button className="icon-button" aria-label={text.common.cancel} onClick={onClose}><X size={18} /></button>
-        </header>
-        <div className="skill-list">
-          {skills.map((skill) => {
-            const enabled = activeSkillIds.includes(skill.id);
-            return (
-              <article className={`skill-item ${skill.installed ? 'installed' : ''}`} key={skill.id}>
-                <div className="skill-item-main">
-                  <div>
-                    <h3>{skill.name}</h3>
-                    <p>{skill.description}</p>
-                  </div>
-                  <span>{skill.category || 'skill'}</span>
-                </div>
-                <div className="skill-actions">
-                  <label className="skill-toggle">
-                    <input
-                      type="checkbox"
-                      disabled={!skill.installed}
-                      checked={enabled}
-                      onChange={(event) => onToggle(skill.id, event.target.checked)}
-                    />
-                    <span>{text.agent.enable}</span>
-                  </label>
-                  {skill.installed ? (
-                    <button className="secondary-button" onClick={() => onUninstall(skill)}>{text.agent.uninstall}</button>
-                  ) : (
-                    <button className="primary-button" onClick={() => onInstall(skill)}><Puzzle size={17} /> {text.agent.install}</button>
-                  )}
-                </div>
-                {skill.source_url && (
-                  <a className="skill-source" href={skill.source_url} target="_blank" rel="noreferrer">{skill.source_url}</a>
-                )}
-              </article>
-            );
-          })}
-          {!skills.length && <p className="library-empty">{text.agent.skillEmpty}</p>}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function LibraryCreateProgress({ text, onBackground, task = null }) {
-  const isPdfTask = Boolean(task);
-  const items = task?.items || [];
-  const done = task?.done || 0;
-  const total = task?.total || items.length || 0;
-  return (
-    <div className="modal-backdrop light">
-      <section className={`modal compact progress-modal ${isPdfTask ? 'pdf-task-modal' : ''}`} role="dialog" aria-modal="true" aria-labelledby="library-progress-title">
-        {!isPdfTask && (
-          <div className="search-loader" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </div>
-        )}
-        <div>
-          <h2 id="library-progress-title">{isPdfTask ? (text.modal.uploadPdfZip || text.modal.pdfFiles) : text.workbench.creatingTitle}</h2>
-          <p>{isPdfTask ? `${done}/${total} ${text.modal.pdfFiles}` : text.workbench.creatingDesc}</p>
-        </div>
-        {isPdfTask ? (
-          <div className="pdf-task-list">
-            {items.map((item) => (
-              <article className={`pdf-task-item ${item.status || 'queued'} ${item.stage || ''}`} key={`${item.index}-${item.filename}`}>
-                <div>
-                  <strong>{item.title || item.filename}</strong>
-                  <span>{item.detail || item.stage || 'queued'}</span>
-                  {item.parse_error && <small>{item.parse_error}</small>}
-                </div>
-                <em>{item.status === 'done' ? '完成' : item.status === 'error' ? '失败' : '处理中'}</em>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="progress-scan">
-            <span />
-          </div>
-        )}
-        <button className="secondary-button" onClick={onBackground}>
-          <RotateCcw size={17} /> {text.common.background}
-        </button>
-      </section>
-    </div>
-  );
-}
-
-function KeywordHelp({ text }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <span className="keyword-help-wrap">
-      <button
-        type="button"
-        className="keyword-help-button"
-        aria-label={text.modal.keywordHelp}
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        onFocus={() => setOpen(true)}
-        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-      >
-        <HelpCircle size={15} />
-      </button>
-      {open && (
-        <div className="keyword-help-popover" role="tooltip">
-          <strong>{text.modal.keywordHelp}</strong>
-          {text.modal.keywordHelpItems.map((item) => <span key={item}>{item}</span>)}
-        </div>
-      )}
-    </span>
-  );
-}
-
-function ScopeTokenInput({ value, onChange, text, onEnter, autoFocus = false }) {
-  const ranks = normalizeRanks(value.ranks, value.rank);
-  const venues = normalizeVenues(value.venues, value.venue);
-  const inputRef = useRef(null);
-  const [draft, setDraft] = useState('');
-  const [suggestions, setSuggestions] = useState([]);
-  const [open, setOpen] = useState(false);
-  const rankSuggestions = ['A', 'B', 'C']
-    .filter((rank) => !ranks.includes(rank))
-    .filter((rank) => {
-      const term = draft.trim().toLowerCase();
-      const normalizedRank = parseRankToken(term);
-      return !term || normalizedRank === rank || rank.toLowerCase().startsWith(term) || `ccf ${rank.toLowerCase()}`.includes(term) || `ccf-${rank.toLowerCase()}`.includes(term);
-    })
-    .map((rank) => ({ id: `rank-${rank}`, type: 'rank', rank }));
-
-  useEffect(() => {
-    const term = draft.trim();
-    if (term.length < 1) {
-      setSuggestions([]);
-      return undefined;
-    }
-    const timer = window.setTimeout(async () => {
-      try {
-        const data = await api(`/venues/suggest?q=${encodeURIComponent(term)}`);
-        const existing = new Set(venues.map((item) => item.toLowerCase()));
-        setSuggestions((data.venues || []).filter((item) => {
-          const key = item.venue_abbr || item.venue_name || item.dblp_key || item.dblp_detail_key || '';
-          return key && !existing.has(key.toLowerCase());
-        }));
-        setOpen(true);
-      } catch {
-        setSuggestions([]);
-      }
-    }, 180);
-    return () => window.clearTimeout(timer);
-  }, [draft, venues.join('|')]);
-
-  function emit(nextRanks, nextVenues) {
-    onChange({
-      rank: nextRanks.join(','),
-      ranks: nextRanks,
-      venue: nextVenues.join(','),
-      venues: nextVenues,
-    });
-  }
-
-  function choose(item) {
-    if (item.type === 'rank') {
-      emit([...ranks, item.rank], venues);
-    } else {
-      emit(ranks, [...venues, item.venue_abbr || item.venue_name || item.dblp_key || item.dblp_detail_key || ''].filter(Boolean));
-    }
-    setDraft('');
-    setOpen(false);
-  }
-
-  function commitDraft() {
-    const items = splitScopeDraft(draft);
-    if (!items.length) return false;
-    const nextRanks = [...ranks];
-    const nextVenues = [...venues];
-    items.forEach((item) => {
-      const parsedRank = parseRankToken(item);
-      if (parsedRank) {
-        if (!nextRanks.includes(parsedRank)) nextRanks.push(parsedRank);
-      } else if (!nextVenues.some((venue) => venue.toLowerCase() === item.toLowerCase())) {
-        nextVenues.push(item);
-      }
-    });
-    emit(nextRanks, nextVenues);
-    setDraft('');
-    setOpen(false);
-    return true;
-  }
-
-  function pick(event, item) {
-    event.preventDefault();
-    event.stopPropagation();
-    choose(item);
-    window.setTimeout(() => inputRef.current?.focus(), 0);
-  }
-
-  function focusInput(event) {
-    if (event.target.closest?.('button')) return;
-    if (event.target !== inputRef.current) {
-      event.preventDefault();
-    }
-    inputRef.current?.focus();
-    setOpen(true);
-  }
-
-  function stopChipButtonMouseDown(event) {
-    event.preventDefault();
-    event.stopPropagation();
-  }
-
-  function removeRank(event, rank) {
-    event.preventDefault();
-    event.stopPropagation();
-    emit(ranks.filter((item) => item !== rank), venues);
-    setDraft('');
-    setOpen(false);
-  }
-
-  function removeVenue(event, venue) {
-    event.preventDefault();
-    event.stopPropagation();
-    emit(ranks, venues.filter((item) => item !== venue));
-    setDraft('');
-    setOpen(false);
-  }
-
-  return (
-    <div className="scope-combobox">
-      <div className="scope-token-field" onMouseDown={focusInput}>
-        {ranks.map((rank) => (
-          <span className={`scope-chip rank-${rank}`} key={`rank-${rank}`}>
-            CCF {rank}
-            <button type="button" aria-label={`Remove CCF ${rank}`} onMouseDown={stopChipButtonMouseDown} onClick={(event) => removeRank(event, rank)}><X size={13} /></button>
-          </span>
-        ))}
-        {venues.map((venue) => (
-          <span className="scope-chip venue-chip" key={`venue-${venue}`}>
-            {venue}
-            <button type="button" aria-label={`Remove ${venue}`} onMouseDown={stopChipButtonMouseDown} onClick={(event) => removeVenue(event, venue)}><X size={13} /></button>
-          </span>
-        ))}
-        <input
-          ref={inputRef}
-          autoFocus={autoFocus}
-          placeholder={ranks.length || venues.length ? '' : text.modal.scopeHint}
-          value={draft}
-          onFocus={() => setOpen(true)}
-          onBlur={() => window.setTimeout(() => {
-            commitDraft();
-            setOpen(false);
-          }, 120)}
-          onChange={(event) => {
-            setDraft(event.target.value);
-            setOpen(true);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Backspace' && !draft && (venues.length || ranks.length)) {
-              venues.length ? emit(ranks, venues.slice(0, -1)) : emit(ranks.slice(0, -1), venues);
-            }
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              const first = [...rankSuggestions, ...suggestions][0];
-              const draftRank = parseRankToken(draft);
-              if (draftRank && !ranks.includes(draftRank)) {
-                choose({ id: `rank-${draftRank}`, type: 'rank', rank: draftRank });
-              } else if (first) {
-                choose(first);
-              } else {
-                commitDraft() || onEnter?.();
-              }
-            }
-          }}
-          autoComplete="off"
-        />
-      </div>
-      {open && !![...rankSuggestions, ...suggestions].length && (
-        <div className="scope-suggestions" role="listbox">
-          {rankSuggestions.map((item) => (
-            <button key={item.id} type="button" onMouseDown={(event) => pick(event, item)}>
-              <strong>CCF {item.rank}</strong>
-              <span>{text.modal.scopeRankHint}</span>
-            </button>
-          ))}
-          {suggestions.map((item) => (
-            <button key={`venue-${item.id}`} type="button" onMouseDown={(event) => pick(event, item)}>
-              <strong>{item.venue_abbr || item.venue_name}</strong>
-              <span>{[item.venue_name && item.venue_abbr ? item.venue_name : '', item.rank ? `CCF ${item.rank}` : '', item.dblp_key].filter(Boolean).join(' · ')}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function YearRangeSlider({ value, onChange, minYear = 1950, maxYear = new Date().getFullYear(), text }) {
-  const from = Number(value.year_from || 2023);
-  const to = Number(value.year_to || maxYear);
-  const safeFrom = Math.min(Math.max(from, minYear), to);
-  const safeTo = Math.max(Math.min(to, maxYear), safeFrom);
-  const recentStart = Math.max(minYear, maxYear - 9);
-  const recentWeight = 0.7;
-  const oldWeight = 1 - recentWeight;
-
-  function yearToPosition(year) {
-    if (year <= recentStart) {
-      const oldRange = Math.max(1, recentStart - minYear);
-      return Math.round(((year - minYear) / oldRange) * oldWeight * 100);
-    }
-    const recentRange = Math.max(1, maxYear - recentStart);
-    return Math.round((oldWeight + ((year - recentStart) / recentRange) * recentWeight) * 100);
-  }
-
-  function positionToYear(position) {
-    const ratio = Number(position) / 100;
-    if (ratio <= oldWeight) {
-      const oldRange = Math.max(1, recentStart - minYear);
-      return Math.round(minYear + (ratio / oldWeight) * oldRange);
-    }
-    const recentRange = Math.max(1, maxYear - recentStart);
-    return Math.round(recentStart + ((ratio - oldWeight) / recentWeight) * recentRange);
-  }
-
-  const fromPosition = yearToPosition(safeFrom);
-  const toPosition = yearToPosition(safeTo);
-  const left = fromPosition;
-  const right = 100 - toPosition;
-
-  function setFrom(nextValue) {
-    const nextFrom = Math.min(positionToYear(nextValue), safeTo);
-    onChange({ year_from: String(nextFrom), year_to: String(safeTo) });
-  }
-
-  function setTo(nextValue) {
-    const nextTo = Math.max(positionToYear(nextValue), safeFrom);
-    onChange({ year_from: String(safeFrom), year_to: String(nextTo) });
-  }
-
-  return (
-    <div className="year-range-control">
-      <div className="year-range-head">
-        <span>{text.modal.yearFrom}</span>
-        <strong>{safeFrom} - {safeTo}</strong>
-        <span>{text.modal.yearTo}</span>
-      </div>
-      <div className="dual-range" style={{ '--range-left': `${left}%`, '--range-right': `${right}%` }}>
-        <div className="dual-range-track" />
-        <input className="range-from" aria-label={text.modal.yearFrom} type="range" min="0" max="100" value={fromPosition} onChange={(event) => setFrom(event.target.value)} />
-        <input className="range-to" aria-label={text.modal.yearTo} type="range" min="0" max="100" value={toPosition} onChange={(event) => setTo(event.target.value)} />
-      </div>
-    </div>
-  );
-}
-
-function EmailTokenInput({ value = [], onChange, text }) {
-  const emails = Array.isArray(value) ? value : [];
-  const inputRef = useRef(null);
-  const [draft, setDraft] = useState('');
-  const [suggestions, setSuggestions] = useState([]);
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    const term = draft.trim();
-    if (term.length < 1) {
-      setSuggestions([]);
-      return undefined;
-    }
-    const timer = window.setTimeout(async () => {
-      try {
-        const data = await api(`/users/suggest?q=${encodeURIComponent(term)}`);
-        const existing = new Set(emails.map((item) => item.toLowerCase()));
-        setSuggestions((data.users || []).filter((item) => item.email && !existing.has(item.email.toLowerCase())));
-        setOpen(true);
-      } catch {
-        setSuggestions([]);
-      }
-    }, 180);
-    return () => window.clearTimeout(timer);
-  }, [draft, emails.join('|')]);
-
-  function emit(nextEmails) {
-    onChange([...new Set(nextEmails.map((item) => item.trim()).filter(Boolean))]);
-  }
-
-  function choose(email) {
-    if (!email) return;
-    emit([...emails, email]);
-    setDraft('');
-    setOpen(false);
-  }
-
-  function commitDraft() {
-    const items = splitScopeDraft(draft).flatMap((item) => item.split(/\s+/)).filter(Boolean);
-    if (!items.length) return false;
-    emit([...emails, ...items]);
-    setDraft('');
-    setOpen(false);
-    return true;
-  }
-
-  function focusEmailInput(event) {
-    if (event.target.closest?.('button')) return;
-    if (event.target !== inputRef.current) {
-      event.preventDefault();
-    }
-    inputRef.current?.focus();
-    setOpen(true);
-  }
-
-  function stopEmailChipMouseDown(event) {
-    event.preventDefault();
-    event.stopPropagation();
-  }
-
-  function removeEmail(event, email) {
-    event.preventDefault();
-    event.stopPropagation();
-    emit(emails.filter((item) => item !== email));
-    setDraft('');
-    setOpen(false);
-  }
-
-  return (
-    <div className="scope-combobox email-combobox">
-      <div className="scope-token-field" onMouseDown={focusEmailInput}>
-        {emails.map((email) => (
-          <span className="scope-chip email-chip" key={email}>
-            {email}
-            <button type="button" aria-label={`Remove ${email}`} onMouseDown={stopEmailChipMouseDown} onClick={(event) => removeEmail(event, email)}><X size={13} /></button>
-          </span>
-        ))}
-        <input
-          ref={inputRef}
-          placeholder={emails.length ? '' : text.modal.sharePlaceholder}
-          value={draft}
-          onFocus={() => setOpen(true)}
-          onBlur={() => window.setTimeout(() => {
-            commitDraft();
-            setOpen(false);
-          }, 120)}
-          onChange={(event) => {
-            setDraft(event.target.value);
-            setOpen(true);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Backspace' && !draft && emails.length) emit(emails.slice(0, -1));
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              suggestions[0]?.email ? choose(suggestions[0].email) : commitDraft();
-            }
-          }}
-          autoComplete="off"
-        />
-      </div>
-      {open && !!suggestions.length && (
-        <div className="scope-suggestions" role="listbox">
-          {suggestions.map((item) => (
-            <button key={item.id || item.email} type="button" onMouseDown={(event) => {
-              event.preventDefault();
-              choose(item.email);
-            }}>
-              <strong>{item.email}</strong>
-              <span>{item.confirmed ? 'confirmed' : 'pending'}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ShareLibraryModal({ library, onSave, onCancel, busy, text }) {
-  const [sharedWith, setSharedWith] = useState(library?.filters_json?.shared_with || []);
-  return (
-    <div className="modal-backdrop">
-      <section className="modal compact" role="dialog" aria-modal="true" aria-labelledby="share-library-title">
-        <header>
-          <div>
-            <h2 id="share-library-title">{text.modal.shareTitle}</h2>
-            <p>{text.modal.shareDesc}</p>
-          </div>
-          <button className="icon-button" aria-label={text.common.cancel} onClick={onCancel}><X size={18} /></button>
-        </header>
-        <div className="field-block">
-          <span>{library.name}</span>
-          <EmailTokenInput value={sharedWith} onChange={setSharedWith} text={text} />
-          {!sharedWith.length && <small className="field-hint">{text.modal.shareEmpty}</small>}
-        </div>
-        <div className="modal-actions">
-          <button className="secondary-button" onClick={onCancel}>{text.common.cancel}</button>
-          <button className="primary-button" disabled={busy} onClick={() => onSave(sharedWith)}>
-            <Users size={17} /> {text.common.save}
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function LibraryModal({ filters, onCreate, onSync, onCancel, busy, text, locale, library, llmSettings }) {
-  const currentYear = new Date().getFullYear();
-  const defaultYears = { year_from: '2023', year_to: String(currentYear) };
-  const recentYears = { year_from: String(Math.max(1950, currentYear - 2)), year_to: String(currentYear) };
-  const [form, setForm] = useState({
-    name: library?.name || (filters.keyword ? `${filters.keyword} papers` : ''),
-    description: library?.description || '',
-    mode: 'static',
-    ...defaultYears,
-    ...filters,
-  });
-  const [source, setSource] = useState('keyword');
-  const [naturalText, setNaturalText] = useState('');
-  const [naturalStep, setNaturalStep] = useState('ask');
-  const [parsingIntent, setParsingIntent] = useState(false);
-  const [previewingIntent, setPreviewingIntent] = useState(false);
-  const [naturalPreview, setNaturalPreview] = useState(null);
-  const [files, setFiles] = useState([]);
-  const namePlaceholder = locale === 'zh' ? text.modal.libraryName : text.modal.libraryName;
-  const isPdfSource = !library && source === 'pdf';
-  const isNaturalSource = !library && source === 'natural';
-  const isEditing = Boolean(library);
-  const hasSearchCriteria = Boolean(form.keyword?.trim() || hasScopeFilter(form));
-  const canSubmit = isEditing
-    ? Boolean(form.name.trim())
-    : isPdfSource
-    ? Boolean(files.length)
-    : isNaturalSource
-      ? hasSearchCriteria && naturalStep === 'ready'
-      : hasSearchCriteria;
-
-  function buildPayload() {
-    return {
-      ...form,
-      mode: 'static',
-      source,
-      files,
-      rank: rankParam(form),
-      ranks: normalizeRanks(form.ranks, form.rank),
-      venue: venueParam(form),
-      venues: normalizeVenues(form.venues, form.venue),
-      name: form.name.trim() || (isPdfSource ? 'PDF papers' : `${(form.keyword || venueParam(form)).trim()} papers`),
-      folders: filters.folders || [],
-      natural_query: naturalText.trim(),
-      smart_search: isNaturalSource && Boolean(naturalPreview?.use_broad_search),
-    };
-  }
-
-  function buildEditPayload() {
-    return {
-      name: form.name.trim() || library.name,
-      description: form.description || '',
-      folders: filters.folders || library?.filters_json?.folders || [],
-      filters: {
-        ...(library?.filters_json || {}),
-        folders: filters.folders || library?.filters_json?.folders || [],
-      },
-    };
-  }
-
-  async function parseNaturalIntent() {
-    const query = naturalText.trim();
-    if (!query) return;
-    setParsingIntent(true);
-    try {
-      let parsed = null;
-      try {
-        parsed = await api('/libraries/intent/parse', { method: 'POST', body: { text: query, llm: llmSettings } });
-      } catch {
-        parsed = null;
-      }
-      const keyword = parsed?.keyword || query.replace(/[，。,.!?！？]/g, ' ').trim();
-      const generatedName = `${query.slice(0, 36)}${query.length > 36 ? '...' : ''} papers`;
-      setForm({
-        ...form,
-        keyword,
-        broad_keyword: parsed?.broad_keyword || keyword,
-        relevance_criteria: parsed?.relevance_criteria || query,
-        ranks: ['A', 'B', 'C'],
-        rank: 'A,B,C',
-        venues: [],
-        venue: '',
-        ...recentYears,
-        name: generatedName,
-      });
-      setNaturalStep('scope');
-    } finally {
-      setParsingIntent(false);
-    }
-  }
-
-  async function previewNaturalIntent() {
-    setPreviewingIntent(true);
-    try {
-      const preview = await api('/libraries/intent/preview', {
-        method: 'POST',
-        body: {
-          ...form,
-          rank: rankParam(form),
-          ranks: normalizeRanks(form.ranks, form.rank),
-          venue: venueParam(form),
-          venues: normalizeVenues(form.venues, form.venue),
-          broad_keyword: form.broad_keyword,
-        },
-      });
-      setNaturalPreview(preview);
-      setNaturalStep('ready');
-    } finally {
-      setPreviewingIntent(false);
-    }
-  }
-
-  function switchSource(nextSource) {
-    setSource(nextSource);
-    if (nextSource === 'natural') {
-      setNaturalStep('ask');
-      setNaturalPreview(null);
-      setForm((current) => ({ ...current, name: '', keyword: '', rank: '', ranks: [], venue: '', venues: [] }));
-    }
-  }
-
-  return (
-    <div className="modal-backdrop">
-      <section className="modal library-modal" role="dialog" aria-modal="true" aria-labelledby="library-modal-title">
-        <header>
-          <div>
-            <h2 id="library-modal-title">{library ? text.modal.updateLibrary : text.modal.libraryTitle}</h2>
-            <p>{library ? (locale === 'zh' ? '修改名称不会重新检索；需要刷新论文时手动点击更新检索。' : 'Renaming does not re-run search. Use refresh search when needed.') : text.modal.libraryDesc}</p>
-          </div>
-          <button className="icon-button" aria-label={text.common.cancel} onClick={onCancel}><X size={18} /></button>
-        </header>
-        {library ? (
-          <>
-            <label>
-              <span>{text.modal.libraryName}</span>
-              <input autoFocus placeholder={namePlaceholder} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            </label>
-            <label>
-              <span>{locale === 'zh' ? '描述' : 'Description'}</span>
-              <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-            </label>
-            <div className="flow-card library-edit-summary">
-              <span>{locale === 'zh' ? '当前检索条件' : 'Current search scope'}</span>
-              <strong>{[form.keyword, venueParam(form), rankParam(form), [form.year_from, form.year_to].filter(Boolean).join('-')].filter(Boolean).join(' · ') || (locale === 'zh' ? '未设置检索条件' : 'No search scope')}</strong>
-              <small>{locale === 'zh' ? '保存信息只更新库名、描述和文件夹配置，不会重新拉取论文。' : 'Save info only updates metadata and folders; it will not fetch papers.'}</small>
-            </div>
-            <div className="modal-actions split-actions">
-              <button className="secondary-button" onClick={onCancel}>{text.common.cancel}</button>
-              <button
-                className="secondary-button"
-                disabled={busy || !onSync}
-                onClick={async () => {
-                  await onSync?.(library);
-                  onCancel();
-                }}
-              >
-                <RotateCcw size={17} /> {text.modal.updateSearch || text.workbench.sync}
-              </button>
-              <button
-                className="primary-button"
-                disabled={busy || !canSubmit}
-                onClick={() => onCreate(buildEditPayload())}
-              >
-                <Check size={17} /> {text.modal.updateMetadata || text.common.save}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-        {!library && (
-          <div className="segmented source-tabs three-way" aria-label="library source">
-            <button type="button" className={source === 'keyword' ? 'active' : ''} onClick={() => switchSource('keyword')}>
-              <Search size={15} /> {text.modal.sourceKeyword}
-            </button>
-            <button type="button" className={source === 'pdf' ? 'active' : ''} onClick={() => switchSource('pdf')}>
-              <FileText size={15} /> {text.modal.sourcePdf}
-            </button>
-            <button type="button" className={source === 'natural' ? 'active' : ''} onClick={() => switchSource('natural')}>
-              <Sparkles size={15} /> {text.modal.sourceNatural}
-            </button>
-          </div>
-        )}
-        {!isNaturalSource && (
-          <label>
-            <span>{text.modal.libraryName}</span>
-            <input placeholder={namePlaceholder} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          </label>
-        )}
-        {isPdfSource ? (
-          <label>
-            <span>{text.modal.pdfFiles}</span>
-            <input
-              type="file"
-              multiple
-              accept=".pdf,.zip,application/pdf,application/zip"
-              onChange={(e) => setFiles(Array.from(e.target.files || []))}
-            />
-            <small className="field-hint">{text.modal.pdfHint}</small>
-          </label>
-        ) : (
-          <>
-            {isNaturalSource ? (
-              <div className="natural-library-flow">
-                <label>
-                  <span>{text.modal.naturalPrompt}</span>
-                  <textarea placeholder={text.modal.naturalHint} value={naturalText} onChange={(event) => setNaturalText(event.target.value)} />
-                </label>
-                {naturalStep === 'ask' && (
-                  <button className="secondary-button" disabled={busy || parsingIntent || !naturalText.trim()} onClick={parseNaturalIntent}>
-                    <Sparkles size={16} /> {parsingIntent ? text.modal.naturalParsing : text.modal.naturalStart}
-                  </button>
-                )}
-                {naturalStep !== 'ask' && (
-                  <div className="flow-card">
-                    <label>
-                      <span className="label-with-help">{text.modal.parsedKeyword}<KeywordHelp text={text} /></span>
-                      <input
-                        value={form.keyword}
-                        onChange={(event) => {
-                          setForm((current) => ({ ...current, keyword: event.target.value }));
-                          setNaturalPreview(null);
-                          if (naturalStep === 'ready') setNaturalStep('years');
-                        }}
-                      />
-                    </label>
-                  </div>
-                )}
-                {naturalStep === 'scope' && (
-                  <div className="flow-card">
-                    <p>{text.modal.naturalScopeQuestion}</p>
-                    <ScopeTokenInput value={form} onChange={(scope) => setForm((current) => ({ ...current, ...scope }))} text={text} />
-                    <button className="secondary-button" onClick={() => setNaturalStep('years')}>{text.modal.continue}</button>
-                  </div>
-                )}
-                {naturalStep === 'years' && (
-                  <div className="flow-card">
-                    <p>{text.modal.naturalYearQuestion}</p>
-                    <YearRangeSlider value={form} onChange={(years) => setForm({ ...form, ...years })} text={text} />
-                    <button className="secondary-button" disabled={previewingIntent} onClick={previewNaturalIntent}>
-                      {previewingIntent ? text.modal.naturalParsing : text.modal.continue}
-                    </button>
-                  </div>
-                )}
-                {naturalStep === 'ready' && (
-                  <div className="flow-card success">
-                    {naturalPreview?.use_broad_search ? (
-                      <>
-                        <p>{locale === 'zh'
-                          ? `精准检索仅找到 ${naturalPreview.strict_count} 篇。创建时将先用下面的宽松条件召回约 ${naturalPreview.broad_count} 篇候选，再并行分析每篇 abstract，只有符合原始需求的论文才会加入库。`
-                          : `Strict search found only ${naturalPreview.strict_count}. Creation will retrieve about ${naturalPreview.broad_count} broader candidates, screen every abstract in parallel, and add only relevant papers.`}</p>
-                        <label>
-                          <span className="label-with-help">{locale === 'zh' ? '宽松检索式' : 'Broad query'}<KeywordHelp text={text} /></span>
-                          <input value={form.broad_keyword || ''} onChange={(event) => setForm((current) => ({ ...current, broad_keyword: event.target.value }))} />
-                        </label>
-                      </>
-                    ) : (
-                      <p>{locale === 'zh'
-                        ? `精准条件可找到 ${naturalPreview?.strict_count || 0} 篇，将直接按精准条件创建论文库。`
-                        : `Strict search found ${naturalPreview?.strict_count || 0} papers and will be used directly.`}</p>
-                    )}
-                    <label>
-                      <span>{text.modal.libraryName}</span>
-                      <input placeholder={namePlaceholder} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-                    </label>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <>
-                <label>
-                  <span className="label-with-help">{text.modal.keyword}<KeywordHelp text={text} /></span>
-                  <input placeholder={text.modal.keywordHint} value={form.keyword} onChange={(e) => setForm({ ...form, keyword: e.target.value })} />
-                </label>
-                <div className="field-block">
-                  <span>{text.modal.scope}</span>
-                  <ScopeTokenInput value={form} onChange={(scope) => setForm((current) => ({ ...current, ...scope }))} text={text} />
-                </div>
-                <YearRangeSlider value={form} onChange={(years) => setForm({ ...form, ...years })} text={text} />
-              </>
-            )}
-          </>
-        )}
-        <div className="modal-actions">
-          <button className="secondary-button" onClick={onCancel}>{text.common.cancel}</button>
-          <button
-            className="primary-button"
-            disabled={busy || !canSubmit}
-            onClick={() => onCreate(buildPayload())}
-          >
-            {isPdfSource ? <Upload size={17} /> : <Search size={17} />}
-            {library ? text.modal.updateLibrary : isPdfSource ? text.modal.createFromPdf : text.modal.createSearch}
-          </button>
-        </div>
-          </>
-        )}
-      </section>
-    </div>
-  );
-}
-
-function AddPaperModal({ activeLibrary, onAddPapers, onUploadPdfs, onCancel, busy, text }) {
-  const currentYear = new Date().getFullYear();
-  const [tab, setTab] = useState('search');
-  const [searchForm, setSearchForm] = useState({ keyword: '', venue: '', venues: [], year_from: '2023', year_to: String(currentYear), rank: '', ranks: [] });
-  const [results, setResults] = useState([]);
-  const [chosen, setChosen] = useState(new Set());
-  const [files, setFiles] = useState([]);
-  const [searching, setSearching] = useState(false);
-
-  async function runSearch() {
-    if (!searchForm.keyword.trim() && !hasScopeFilter(searchForm)) return;
-    setSearching(true);
-    try {
-      const qs = new URLSearchParams({
-        ...searchForm,
-        venue: venueParam(searchForm),
-        venues: venueParam(searchForm),
-        rank: rankParam(searchForm),
-        page_size: 30,
-      });
-      const data = await api(`/papers/search?${qs.toString()}`);
-      setResults(data.papers || []);
-    } finally {
-      setSearching(false);
-    }
-  }
-
-  return (
-    <div className="modal-backdrop">
-      <section className="modal add-paper-modal" role="dialog" aria-modal="true" aria-labelledby="add-paper-title">
-        <header>
-          <div>
-            <h2 id="add-paper-title">{text.modal.addToLibrary}</h2>
-            <p>{activeLibrary.name}</p>
-          </div>
-          <button className="icon-button" aria-label={text.common.cancel} onClick={onCancel}><X size={18} /></button>
-        </header>
-        <div className="segmented source-tabs" aria-label="add paper source">
-          <button type="button" className={tab === 'search' ? 'active' : ''} onClick={() => setTab('search')}>
-            <Search size={15} /> {text.modal.searchToAdd}
-          </button>
-          <button type="button" className={tab === 'upload' ? 'active' : ''} onClick={() => setTab('upload')}>
-            <Upload size={15} /> {text.modal.uploadToAdd}
-          </button>
-        </div>
-        {tab === 'search' ? (
-          <>
-            <div className="add-search-grid">
-              <label>
-                <span className="label-with-help">{text.modal.keyword}<KeywordHelp text={text} /></span>
-                <input autoFocus placeholder={text.modal.keywordHint} value={searchForm.keyword} onChange={(e) => setSearchForm({ ...searchForm, keyword: e.target.value })} onKeyDown={(event) => {
-                  if (event.key === 'Enter') runSearch();
-                }} />
-              </label>
-              <div className="field-block">
-                <span>{text.modal.scope}</span>
-                <ScopeTokenInput value={searchForm} onChange={(scope) => setSearchForm((current) => ({ ...current, ...scope }))} text={text} onEnter={runSearch} />
-              </div>
-              <YearRangeSlider value={searchForm} onChange={(years) => setSearchForm({ ...searchForm, ...years })} text={text} />
-            </div>
-            <button className="secondary-button" disabled={searching || (!searchForm.keyword.trim() && !hasScopeFilter(searchForm))} onClick={runSearch}>
-              <Search size={17} /> {text.common.search}
-            </button>
-            <div className="search-result-list" aria-label={text.modal.searchResults}>
-              {results.map((paper) => (
-                <label className="search-result-item" key={paper.id}>
-                  <input
-                    type="checkbox"
-                    checked={chosen.has(paper.id)}
-                    onChange={(event) => {
-                      const next = new Set(chosen);
-                      event.target.checked ? next.add(paper.id) : next.delete(paper.id);
-                      setChosen(next);
-                    }}
-                  />
-                  <span>
-                    <strong>{paper.title}</strong>
-                    <small>{[paper.pub_year, paper.venue_abbr || paper.venue_name, paper.rank ? `CCF ${paper.rank}` : ''].filter(Boolean).join(' · ')}</small>
-                  </span>
-                </label>
-              ))}
-            </div>
-            <div className="modal-actions">
-              <button className="secondary-button" onClick={onCancel}>{text.common.cancel}</button>
-              <button className="primary-button" disabled={busy || !chosen.size} onClick={() => onAddPapers([...chosen])}>
-                <Plus size={17} /> {text.modal.addSelected}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <label className="file-drop">
-              <FileUp size={22} />
-              <span>{text.table.uploadPdfZip}</span>
-              <small>{text.modal.pdfHint}</small>
-              <input type="file" multiple accept=".pdf,.zip,application/pdf,application/zip" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
-            </label>
-            {!!files.length && <p className="file-count">{files.length} {text.modal.pdfFiles}</p>}
-            <div className="modal-actions">
-              <button className="secondary-button" onClick={onCancel}>{text.common.cancel}</button>
-              <button className="primary-button" disabled={busy || !files.length} onClick={() => onUploadPdfs(files)}>
-                <Upload size={17} /> {text.modal.uploadToAdd}
-              </button>
-            </div>
-          </>
-        )}
-      </section>
-    </div>
-  );
-}
-
-function PaperDetailsModal({ text, paper, abstractValue, setAbstractValue, onSaveAbstract, onUploadPdf, onClose, busy }) {
-  const venue = displayVenue(paper);
-  const currentAbstract = displayPaperAbstract(paper);
-  const abstractChanged = abstractValue.trim() !== currentAbstract.trim();
-  return (
-    <div className="modal-backdrop light">
-      <section className="modal paper-details-modal" role="dialog" aria-modal="true" aria-labelledby="paper-details-title">
-        <header>
-          <div>
-            <h2 id="paper-details-title">{text.table.details}</h2>
-            <p>{text.table.detailsReadonly}</p>
-          </div>
-          <button className="icon-button" aria-label={text.common.cancel} onClick={onClose}><X size={18} /></button>
-        </header>
-        <div className="paper-details-readonly">
-          <label>
-            <span>{text.table.paper}</span>
-            <strong>{displayPaperTitle(paper)}</strong>
-          </label>
-          <label>
-            <span>{text.table.year}</span>
-            <strong>{paper.pub_year || '-'}</strong>
-          </label>
-          <label>
-            <span>{text.table.venue}</span>
-            <strong title={venue.title}>{venue.label}</strong>
-          </label>
-          <label>
-            <span>{text.table.rank}</span>
-            <strong>{paper.rank || '-'}</strong>
-          </label>
-          <label className="wide">
-            <span>{text.table.authors}</span>
-            <strong>{formatAuthors(paper.authors) || '-'}</strong>
-          </label>
-        </div>
-        <label className="paper-details-abstract">
-          <span>{text.table.abstract}</span>
-          <textarea
-            value={abstractValue}
-            placeholder={text.table.abstractPlaceholder}
-            onChange={(event) => setAbstractValue(event.target.value)}
-          />
-        </label>
-        <div className="paper-details-pdf-row">
-          <span>{text.table.pdf}</span>
-          <div>
-            {paper.pdf_url ? (
-              <small>{text.table.uploadedPdf}</small>
-            ) : (
-              <small>{text.table.noPdf}</small>
-            )}
-            <label className="secondary-button">
-              <Upload size={15} /> {text.table.uploadPdf}
-              <input
-                type="file"
-                accept="application/pdf"
-                onChange={(event) => {
-                  onUploadPdf(event.target.files?.[0]);
-                  event.target.value = '';
-                }}
-              />
-            </label>
-          </div>
-        </div>
-        <div className="modal-actions">
-          <button className="secondary-button" onClick={onClose}>{text.common.cancel}</button>
-          <button className="primary-button" disabled={busy || !abstractChanged} onClick={onSaveAbstract}>{text.common.save}</button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function RenamePaperModal({ text, paper, title, setTitle, onCancel, onSave, busy }) {
-  const unchanged = title.trim() === displayPaperTitle(paper).trim();
-  return (
-    <div className="modal-backdrop light">
-      <section className="modal rename-paper-modal" role="dialog" aria-modal="true" aria-labelledby="rename-paper-title">
-        <header>
-          <div>
-            <h2 id="rename-paper-title">{text.table.renamePaper}</h2>
-            <p>{text.table.renamePaperDesc}</p>
-          </div>
-          <button className="icon-button" aria-label={text.common.cancel} onClick={onCancel}><X size={18} /></button>
-        </header>
-        <label>
-          <span>{text.table.paper}</span>
-          <textarea autoFocus value={title} onChange={(event) => setTitle(event.target.value)} />
-        </label>
-        <div className="modal-actions">
-          <button className="secondary-button" onClick={onCancel}>{text.common.cancel}</button>
-          <button className="primary-button" disabled={busy || !title.trim() || unchanged} onClick={onSave}>
-            {text.common.save}
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function PdfMismatchModal({ text, check, onCancel, onConfirm, busy }) {
-  const paper = check.paper || {};
-  const pdf = check.pdf || {};
-  return (
-    <div className="modal-backdrop light">
-      <section className="modal pdf-mismatch-modal" role="dialog" aria-modal="true" aria-labelledby="pdf-mismatch-title">
-        <header>
-          <div>
-            <h2 id="pdf-mismatch-title">{text.table.confirmPdfUpload}</h2>
-            <p>{text.table.confirmPdfUploadDesc}</p>
-          </div>
-          <button className="icon-button" aria-label={text.common.cancel} onClick={onCancel}><X size={18} /></button>
-        </header>
-        <div className="pdf-match-score">
-          {text.table.similarity}: {Math.round((check.score || 0) * 100)}%
-        </div>
-        <div className="pdf-diff-grid">
-          <article>
-            <strong>{text.table.currentPaper}</strong>
-            <h3>{paper.title || '-'}</h3>
-            <p>{formatAuthors(paper.authors)}</p>
-            <small>{[paper.pub_year, paper.venue].filter(Boolean).join(' · ') || '-'}</small>
-          </article>
-          <article>
-            <strong>{text.table.uploadedPdf}</strong>
-            <h3>{pdf.title || '-'}</h3>
-            <p>{pdf.authors || '-'}</p>
-            <small>{[pdf.pub_year, pdf.url].filter(Boolean).join(' · ') || '-'}</small>
-          </article>
-        </div>
-        {!!pdf.candidates?.length && (
-          <div className="pdf-candidates">
-            {pdf.candidates.map((candidate) => <span key={candidate}>{candidate}</span>)}
-          </div>
-        )}
-        <div className="modal-actions">
-          <button className="secondary-button" onClick={onCancel}>{text.common.cancel}</button>
-          <button className="primary-button" disabled={busy} onClick={onConfirm}>
-            <Upload size={17} /> {text.table.storeAnyway}
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function AssociatePaperModal({ paper, onAssociate, onCancel, busy, text }) {
-  const [keyword, setKeyword] = useState(paper.title || '');
-  const [results, setResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-
-  async function runSearch() {
-    if (!keyword.trim()) return;
-    setSearching(true);
-    try {
-      const qs = new URLSearchParams({ keyword, page_size: 20 });
-      const data = await api(`/papers/search?${qs.toString()}`);
-      setResults((data.papers || []).filter((item) => item.id !== paper.id && !String(item.dblp_key || '').startsWith('upload/')));
-    } finally {
-      setSearching(false);
-    }
-  }
-
-  return (
-    <div className="modal-backdrop">
-      <section className="modal associate-modal" role="dialog" aria-modal="true" aria-labelledby="associate-title">
-        <header>
-          <div>
-            <h2 id="associate-title">{text.modal.associateTitle}</h2>
-            <p>{text.modal.associateDesc}</p>
-          </div>
-          <button className="icon-button" aria-label={text.common.cancel} onClick={onCancel}><X size={18} /></button>
-        </header>
-        <label>
-          <span>{text.modal.keyword}</span>
-          <input
-            autoFocus
-            value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') runSearch();
-            }}
-          />
-        </label>
-        <button className="secondary-button" disabled={searching || !keyword.trim()} onClick={runSearch}>
-          <Search size={17} /> {text.common.search}
-        </button>
-        <div className="search-result-list">
-          {results.map((item) => (
-            <article className="associate-result-item" key={item.id}>
-              <div>
-                <strong>{item.title}</strong>
-                <small>{[item.pub_year, item.venue_abbr || item.venue_name, item.rank ? `CCF ${item.rank}` : ''].filter(Boolean).join(' · ')}</small>
-              </div>
-              <button className="primary-button" disabled={busy} onClick={() => onAssociate(item.id)}>
-                <Check size={17} /> {text.modal.associateToPaper}
-              </button>
-            </article>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function TagModal({ tag: initialTag, onCreate, onCancel, text }) {
-  const [tag, setTag] = useState(initialTag || { name: '', description: '', auto_folder: false });
-  return (
-    <div className="modal-backdrop">
-      <section className="modal compact" role="dialog" aria-modal="true" aria-labelledby="tag-modal-title">
-        <header>
-          <div>
-            <h2 id="tag-modal-title">{initialTag ? text.modal.tagTitleEdit : text.modal.tagTitleAdd}</h2>
-            <p>{text.modal.tagDesc}</p>
-          </div>
-          <button className="icon-button" aria-label={text.common.cancel} onClick={onCancel}><X size={18} /></button>
-        </header>
-        <label>
-          <span>{text.table.tagColumn}</span>
-          <input placeholder={text.modal.tagName} value={tag.name} onChange={(e) => setTag({ ...tag, name: e.target.value })} />
-        </label>
-        <label>
-          <span>Description</span>
-          <textarea placeholder={text.modal.tagPrompt} value={tag.description} onChange={(e) => setTag({ ...tag, description: e.target.value })} />
-        </label>
-        <label className="tag-auto-folder-toggle">
-          <input type="checkbox" checked={Boolean(tag.auto_folder)} onChange={(e) => setTag({ ...tag, auto_folder: e.target.checked })} />
-          <span>
-            <strong>{text.modal.autoFolder}</strong>
-            <small>{text.modal.autoFolderHint}</small>
-          </span>
-        </label>
-        <div className="modal-actions">
-          <button className="secondary-button" onClick={onCancel}>{text.common.cancel}</button>
-          <button className="primary-button" disabled={!tag.name.trim()} onClick={() => onCreate({ ...tag, name: tag.name.trim() })}>
-            <Plus size={17} /> {initialTag ? text.common.save : text.common.add}
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function FolderModal({ library, parentFolder, onCreate, onCancel, text }) {
-  const [folderName, setFolderName] = useState('');
-  return (
-    <div className="modal-backdrop">
-      <section className="modal compact" role="dialog" aria-modal="true" aria-labelledby="folder-modal-title">
-        <header>
-          <div>
-            <h2 id="folder-modal-title">{parentFolder ? text.modal.addChildFolder : text.modal.addFolder}</h2>
-            <p>{parentFolder || library.name}</p>
-          </div>
-          <button className="icon-button" aria-label={text.common.cancel} onClick={onCancel}><X size={18} /></button>
-        </header>
-        <label>
-          <span>{text.modal.folders}</span>
-          <input
-            autoFocus
-            placeholder={text.modal.folderName}
-            value={folderName}
-            onChange={(e) => setFolderName(e.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') onCreate(folderName);
-            }}
-          />
-        </label>
-        <div className="modal-actions">
-          <button className="secondary-button" onClick={onCancel}>{text.common.cancel}</button>
-          <button className="primary-button" disabled={!folderName.trim()} onClick={() => onCreate(folderName)}>
-            <Plus size={17} /> {text.common.add}
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function TagFilterMenu({ definitions, activeTag, onSelect, onAdd, onEdit, text }) {
-  return (
-    <div className="tag-menu">
-      <button className={activeTag ? '' : 'active'} onClick={() => onSelect('')}>{text.table.allTags}</button>
-      {definitions.length === 0 && <p>{text.table.noTags}</p>}
-      {definitions.map((tag) => (
-        <div className="tag-menu-row" key={tag.name}>
-          <button className={activeTag === tag.name ? 'active' : ''} onClick={() => onSelect(tag.name)}>
-            <span>{tag.name}</span>
-            <small>{tag.description}</small>
-          </button>
-          <button className="tag-edit-button" title={text.table.editTag} aria-label={text.table.editTag} onClick={() => onEdit(tag)}><Pencil size={13} /></button>
-        </div>
-      ))}
-      <button onClick={onAdd}><Plus size={14} /> {text.table.addTag}</button>
-    </div>
-  );
-}
-
-function TagCheckboxes({ paper, definitions, onApply, text }) {
-  const selectedTags = paper.tags_json || [];
-
-  function toggleTag(tagName, checked) {
-    const next = checked
-      ? [...new Set([...selectedTags, tagName])]
-      : selectedTags.filter((item) => item !== tagName);
-    onApply(next);
-  }
-
-  if (!definitions.length) {
-    return (
-      <span className="tag-inline-empty">{text.table.noTagDefinitions}</span>
-    );
-  }
-
-  return (
-    <div className="tag-checkboxes">
-      {definitions.map((tag) => (
-        <label key={tag.name}>
-          <input
-            type="checkbox"
-            checked={selectedTags.includes(tag.name)}
-            onChange={(event) => toggleTag(tag.name, event.target.checked)}
-          />
-          <span>{tag.name}</span>
-        </label>
-      ))}
-    </div>
-  );
-}
-
-function TagMenu({ paper, definitions, onApply, onAdd, onEdit, text }) {
-  const [selectedTags, setSelectedTags] = useState(paper.tags_json || []);
-  function toggleTag(tagName, checked) {
-    const next = checked
-      ? [...new Set([...selectedTags, tagName])]
-      : selectedTags.filter((item) => item !== tagName);
-    setSelectedTags(next);
-    onApply(next);
-  }
-  return (
-    <div className="tag-menu">
-      {definitions.length === 0 && <p>{text.table.noTags}</p>}
-      {definitions.map((tag) => (
-        <label key={tag.name}>
-          <input
-            type="checkbox"
-            checked={selectedTags.includes(tag.name)}
-            onChange={(e) => toggleTag(tag.name, e.target.checked)}
-          />
-          <span>{tag.name}</span>
-          <small>{tag.description}</small>
-          <button type="button" className="tag-edit-button" title={text.table.editTag} aria-label={text.table.editTag} onClick={() => onEdit(tag)}><Pencil size={13} /></button>
-        </label>
-      ))}
-      <button onClick={onAdd}><Plus size={14} /> {text.table.addTag}</button>
-    </div>
-  );
-}
-
-function formatAuthors(authors) {
-  if (!authors) return '';
-  if (Array.isArray(authors)) return authors.slice(0, 4).join(', ');
-  if (typeof authors === 'string') return authors;
-  return '';
-}
-
-createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById('root')).render(import.meta.env.VITE_EASYREF_LEGACY === 'true' ? <App /> : <ResearchErrorBoundary><ResearchWorkbench /></ResearchErrorBoundary>);

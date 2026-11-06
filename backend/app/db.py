@@ -117,12 +117,16 @@ def ensure_schema():
     """Apply lightweight additive migrations needed by the app."""
     statements = [
         "SELECT pg_advisory_xact_lock(hashtext('scholarx_schema_migrations'))",
+        "CREATE EXTENSION IF NOT EXISTS vector",
         "ALTER TABLE public.library_papers ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ",
         "ALTER TABLE public.paper_detail ADD COLUMN IF NOT EXISTS detail_snippet TEXT",
         "ALTER TABLE public.paper_detail ADD COLUMN IF NOT EXISTS pdf_text_preview TEXT",
         "ALTER TABLE public.paper_detail ADD COLUMN IF NOT EXISTS abstract_source VARCHAR(80)",
         "ALTER TABLE public.paper_uploads ADD COLUMN IF NOT EXISTS file_hash VARCHAR(80)",
+        "ALTER TABLE public.paper_chunks ADD COLUMN IF NOT EXISTS embedding vector",
+        "ALTER TABLE public.paper_chunks ADD COLUMN IF NOT EXISTS embedding_dim INT",
         "CREATE INDEX IF NOT EXISTS idx_paper_uploads_file_hash ON public.paper_uploads(file_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_paper_chunks_embedding_model_dim ON public.paper_chunks(embedding_model, embedding_dim)",
         """
         CREATE TABLE IF NOT EXISTS public.paper_tasks (
             id BIGSERIAL PRIMARY KEY,

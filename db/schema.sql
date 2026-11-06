@@ -115,6 +115,8 @@ CREATE TABLE IF NOT EXISTS public.paper_chunks (
     token_count INT,
     embedding_model VARCHAR(200),
     embedding_json JSONB,
+    embedding vector,
+    embedding_dim INT,
     metadata_json JSONB,
     created_at TIMESTAMPTZ DEFAULT now(),
     UNIQUE(upload_id, chunk_no)
@@ -195,6 +197,7 @@ CREATE INDEX IF NOT EXISTS idx_library_papers_paper ON public.library_papers(pap
 CREATE INDEX IF NOT EXISTS idx_library_papers_status ON public.library_papers(status);
 CREATE INDEX IF NOT EXISTS idx_paper_chunks_paper ON public.paper_chunks(paper_id);
 CREATE INDEX IF NOT EXISTS idx_paper_chunks_upload ON public.paper_chunks(upload_id);
+CREATE INDEX IF NOT EXISTS idx_paper_chunks_embedding_model_dim ON public.paper_chunks(embedding_model, embedding_dim);
 CREATE INDEX IF NOT EXISTS idx_paper_tasks_library ON public.paper_tasks(library_id);
 CREATE INDEX IF NOT EXISTS idx_library_files_library ON public.library_files(library_id);
 CREATE INDEX IF NOT EXISTS idx_library_files_parent ON public.library_files(parent_id);

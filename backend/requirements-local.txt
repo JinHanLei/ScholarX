@@ -1,0 +1,8 @@
+Flask==3.0.3
+requests==2.32.3
+lxml>=5.3,<7
+jsonschema[format]>=4.23,<5
+PyYAML>=6.0.2,<7
+pypdf>=5,<7
+pytest>=8,<10
+tqdm>=4.66,<5

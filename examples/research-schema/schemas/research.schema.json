@@ -1,0 +1,4267 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:easyref:schema:research:1.0.0",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "project_id",
+    "objects",
+    "relationships",
+    "files",
+    "external_resources",
+    "extensions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "objects": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/ResearchProject"
+          },
+          {
+            "$ref": "#/$defs/LiteratureReference"
+          },
+          {
+            "$ref": "#/$defs/Idea"
+          },
+          {
+            "$ref": "#/$defs/ResearchQuestion"
+          },
+          {
+            "$ref": "#/$defs/Hypothesis"
+          },
+          {
+            "$ref": "#/$defs/ModelBlueprint"
+          },
+          {
+            "$ref": "#/$defs/ModelModule"
+          },
+          {
+            "$ref": "#/$defs/Experiment"
+          },
+          {
+            "$ref": "#/$defs/ExperimentRun"
+          },
+          {
+            "$ref": "#/$defs/ResearchClaim"
+          },
+          {
+            "$ref": "#/$defs/Evidence"
+          },
+          {
+            "$ref": "#/$defs/Paper"
+          },
+          {
+            "$ref": "#/$defs/PaperSection"
+          },
+          {
+            "$ref": "#/$defs/PaperParagraph"
+          },
+          {
+            "$ref": "#/$defs/ParagraphOutline"
+          },
+          {
+            "$ref": "#/$defs/Figure"
+          },
+          {
+            "$ref": "#/$defs/Table"
+          },
+          {
+            "$ref": "#/$defs/Review"
+          },
+          {
+            "$ref": "#/$defs/ReviewIssue"
+          },
+          {
+            "$ref": "#/$defs/Decision"
+          },
+          {
+            "$ref": "#/$defs/Task"
+          },
+          {
+            "$ref": "#/$defs/SkillRun"
+          },
+          {
+            "$ref": "#/$defs/AgentSession"
+          },
+          {
+            "$ref": "#/$defs/SubmissionAttempt"
+          },
+          {
+            "$ref": "#/$defs/VenueProfile"
+          },
+          {
+            "$ref": "#/$defs/Artifact"
+          }
+        ]
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "source",
+          "target",
+          "provenance",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "type": {
+            "enum": [
+              "derived_from",
+              "depends_on",
+              "uses",
+              "implemented_by",
+              "evaluates",
+              "produces",
+              "supports",
+              "contradicts",
+              "describes",
+              "cites",
+              "addresses",
+              "blocks",
+              "supersedes",
+              "belongs_to",
+              "generated_by",
+              "submitted_as"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "provenance": {
+            "type": "object",
+            "required": [
+              "kind",
+              "actor",
+              "sources"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "fact",
+                  "inference",
+                  "hypothesis"
+                ]
+              },
+              "actor": {
+                "type": "string"
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              }
+            },
+            "additionalProperties": true
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            },
+            "uniqueItems": true
+          },
+          "automatic": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "sha256",
+          "size"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "external_resources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "reason"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "affected_tasks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            },
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "extensions": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "ResearchProject": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "ResearchProject"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "objective",
+            "environment_requirements"
+          ],
+          "properties": {
+            "objective": {
+              "type": "string"
+            },
+            "environment_requirements": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "LiteratureReference": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "LiteratureReference"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "title"
+          ],
+          "properties": {
+            "title": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "Idea": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "Idea"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "statement"
+          ],
+          "properties": {
+            "statement": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ResearchQuestion": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "ResearchQuestion"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "question"
+          ],
+          "properties": {
+            "question": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "Hypothesis": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "Hypothesis"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "statement",
+            "test_criteria"
+          ],
+          "properties": {
+            "statement": {
+              "type": "string"
+            },
+            "test_criteria": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ModelBlueprint": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "ModelBlueprint"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "design_goal",
+            "modules",
+            "edges",
+            "code_refs",
+            "history",
+            "decisions"
+          ],
+          "properties": {
+            "design_goal": {
+              "type": "string"
+            },
+            "modules": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "uniqueItems": true
+            },
+            "edges": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "code_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "history": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "decisions": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ModelModule": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "ModelModule"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "purpose",
+            "code_refs"
+          ],
+          "properties": {
+            "purpose": {
+              "type": "string"
+            },
+            "code_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "Experiment": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "Experiment"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "objective",
+            "config"
+          ],
+          "properties": {
+            "objective": {
+              "type": "string"
+            },
+            "config": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ExperimentRun": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "ExperimentRun"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "execution_status",
+            "config",
+            "metrics",
+            "outputs"
+          ],
+          "properties": {
+            "execution_status": {
+              "enum": [
+                "not_started",
+                "queued",
+                "running",
+                "interrupted",
+                "succeeded",
+                "failed",
+                "cancelled",
+                "unknown"
+              ]
+            },
+            "config": {
+              "type": "object"
+            },
+            "metrics": {
+              "type": "object"
+            },
+            "outputs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ResearchClaim": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "ResearchClaim"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "statement",
+            "evidence"
+          ],
+          "properties": {
+            "statement": {
+              "type": "string"
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "Evidence": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "Evidence"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "source_id",
+            "locator",
+            "sha256"
+          ],
+          "properties": {
+            "source_id": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            },
+            "locator": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "Paper": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "Paper"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "source_path",
+            "sections"
+          ],
+          "properties": {
+            "source_path": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+            },
+            "sections": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "PaperSection": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "PaperSection"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "heading",
+            "paragraphs"
+          ],
+          "properties": {
+            "heading": {
+              "type": "string"
+            },
+            "paragraphs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "PaperParagraph": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "PaperParagraph"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "source_path",
+            "anchor",
+            "claims"
+          ],
+          "properties": {
+            "source_path": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+            },
+            "anchor": {
+              "type": "string"
+            },
+            "claims": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ParagraphOutline": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "ParagraphOutline"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "paragraph_id",
+            "purpose",
+            "main_claim",
+            "evidence",
+            "locked",
+            "pinned"
+          ],
+          "properties": {
+            "paragraph_id": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            },
+            "purpose": {
+              "type": "string"
+            },
+            "main_claim": {
+              "type": "string"
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "uniqueItems": true
+            },
+            "locked": {
+              "type": "boolean"
+            },
+            "pinned": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "Figure": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "Figure"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "caption"
+          ],
+          "properties": {
+            "caption": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "Table": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "Table"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "caption"
+          ],
+          "properties": {
+            "caption": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "Review": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "Review"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "scope"
+          ],
+          "properties": {
+            "scope": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ReviewIssue": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "ReviewIssue"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "problem",
+            "verification",
+            "resolution_status"
+          ],
+          "properties": {
+            "problem": {
+              "type": "string"
+            },
+            "verification": {
+              "type": "string"
+            },
+            "resolution_status": {
+              "enum": [
+                "open",
+                "in_progress",
+                "resolved",
+                "dismissed",
+                "needs_review"
+              ]
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "Decision": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "Decision"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "rationale",
+            "outcome"
+          ],
+          "properties": {
+            "rationale": {
+              "type": "string"
+            },
+            "outcome": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "Task": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "Task"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "objective",
+            "stage",
+            "dependencies",
+            "required_inputs",
+            "expected_outputs",
+            "assigned_skill",
+            "execution_context",
+            "blocking_reasons",
+            "last_completed_step",
+            "next_action",
+            "approval_requirement",
+            "checkpoint",
+            "verification"
+          ],
+          "properties": {
+            "objective": {
+              "type": "string"
+            },
+            "stage": {
+              "type": "string"
+            },
+            "dependencies": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "uniqueItems": true
+            },
+            "required_inputs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "expected_outputs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "assigned_skill": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "execution_context": {
+              "type": "object"
+            },
+            "blocking_reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "last_completed_step": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "next_action": {
+              "type": "string"
+            },
+            "approval_requirement": {
+              "enum": [
+                "required",
+                "not_required"
+              ]
+            },
+            "checkpoint": {
+              "type": "object",
+              "required": [
+                "completed_steps",
+                "written_files",
+                "successful_commands",
+                "processes",
+                "reusable_outputs",
+                "git_changes",
+                "preflight_checks"
+              ],
+              "properties": {
+                "completed_steps": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "uniqueItems": true
+                },
+                "written_files": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "uniqueItems": true
+                },
+                "successful_commands": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "uniqueItems": true
+                },
+                "processes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "uniqueItems": true
+                },
+                "reusable_outputs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "uniqueItems": true
+                },
+                "preflight_checks": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "uniqueItems": true
+                }
+              }
+            },
+            "verification": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "passed",
+                  "reviewer",
+                  "evidence"
+                ],
+                "properties": {
+                  "passed": {
+                    "type": "boolean"
+                  },
+                  "reviewer": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "evidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "uniqueItems": true
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "SkillRun": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "SkillRun"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "skill_name",
+            "inputs",
+            "outputs"
+          ],
+          "properties": {
+            "skill_name": {
+              "type": "string"
+            },
+            "inputs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "uniqueItems": true
+            },
+            "outputs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "AgentSession": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "AgentSession"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "executor"
+          ],
+          "properties": {
+            "executor": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "SubmissionAttempt": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "SubmissionAttempt"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "venue",
+            "branch",
+            "git_commit",
+            "snapshot_path",
+            "sha256",
+            "submission_status"
+          ],
+          "properties": {
+            "venue": {
+              "type": "string"
+            },
+            "branch": {
+              "type": "string"
+            },
+            "git_commit": {
+              "type": "string"
+            },
+            "snapshot_path": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "submission_status": {
+              "enum": [
+                "prepared",
+                "submitted",
+                "accepted",
+                "rejected",
+                "withdrawn"
+              ]
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "VenueProfile": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "VenueProfile"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "name"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "Artifact": {
+      "type": "object",
+      "required": [
+        "id",
+        "project_id",
+        "type",
+        "title",
+        "created_at",
+        "updated_at",
+        "revision",
+        "status",
+        "validation_status",
+        "approval_status",
+        "location",
+        "provenance",
+        "related_objects",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "type": {
+          "const": "Artifact"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "interrupted",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "unknown",
+            "unverified",
+            "needs_confirmation",
+            "verified",
+            "rejected",
+            "stale"
+          ]
+        },
+        "approval_status": {
+          "enum": [
+            "not_required",
+            "required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "kind",
+            "actor",
+            "sources"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "fact",
+                "inference",
+                "hypothesis"
+              ]
+            },
+            "actor": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "related_objects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "path",
+            "media_type"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+            },
+            "media_type": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,3 @@
+* text=auto eol=lf
+# Export fixtures include byte-level checksums; preserve their original bytes.
+examples/research-schema/** -text

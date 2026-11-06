@@ -307,11 +307,26 @@ def split_authors(authors):
 
 def citation_key(paper):
     authors = split_authors(paper.get("authors"))
-    first_author = authors[0].split()[-1] if authors else "paper"
+    first_author = "paper"
+    for author in authors:
+        raw = str(author or "").strip()
+        if not raw:
+            continue
+        if "," in raw:
+            candidate = raw.split(",", 1)[0]
+        else:
+            candidate = raw
+        tokens = [
+            token
+            for token in re.findall(r"[A-Za-z][A-Za-z'-]*", candidate)
+            if token.lower() not in {"and", "et", "al", "jr", "sr"}
+        ]
+        if tokens:
+            first_author = tokens[-1]
+            break
     first_author = re.sub(r"[^A-Za-z0-9]+", "", first_author) or "paper"
     year = paper.get("pub_year") or "nd"
-    title_word = next((word for word in re.findall(r"[A-Za-z0-9]+", paper.get("title") or "") if len(word) > 3), "")
-    return f"{first_author}{year}{title_word}".lower()
+    return f"{first_author}_{year}"
 
 
 def venue_name(paper):
@@ -329,7 +344,11 @@ def paper_details(paper):
 
 
 def author_list(paper):
-    return split_authors(paper.get("authors"))
+    return [
+        re.sub(r"\s+\d{4}\b", "", author).strip()
+        for author in split_authors(paper.get("authors"))
+        if re.sub(r"\s+\d{4}\b", "", author).strip()
+    ]
 
 
 def format_authors_apa(authors):

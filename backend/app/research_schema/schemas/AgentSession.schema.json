@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:easyref:schema:AgentSession:1.0.0",
+  "type": "object",
+  "required": [
+    "id",
+    "project_id",
+    "type",
+    "title",
+    "created_at",
+    "updated_at",
+    "revision",
+    "status",
+    "validation_status",
+    "approval_status",
+    "location",
+    "provenance",
+    "related_objects",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "type": {
+      "const": "AgentSession"
+    },
+    "title": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "revision": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "status": {
+      "enum": [
+        "pending",
+        "in_progress",
+        "blocked",
+        "interrupted",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "validation_status": {
+      "enum": [
+        "unknown",
+        "unverified",
+        "needs_confirmation",
+        "verified",
+        "rejected",
+        "stale"
+      ]
+    },
+    "approval_status": {
+      "enum": [
+        "not_required",
+        "required",
+        "pending",
+        "approved",
+        "rejected"
+      ]
+    },
+    "location": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*[\\\\:\\x00-\\x1f]).+$"
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "kind",
+        "actor",
+        "sources"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "fact",
+            "inference",
+            "hypothesis"
+          ]
+        },
+        "actor": {
+          "type": "string"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "related_objects": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+      },
+      "uniqueItems": true
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "executor"
+      ],
+      "properties": {
+        "executor": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "extensions": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true
+}
