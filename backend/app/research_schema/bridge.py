@@ -222,7 +222,7 @@ class ResearchSchemaService:
             for row in tables.get('experiments',[]):
                 if row['status'] in {'running','queued'}: row['status']='interrupted'
             for row in tables.get('idea_versions',[]):
-                if row['stage'] not in {'completed','blocked','failed','cancelled','interrupted'}:
+                if row['stage'] not in {'completed','blocked','failed','cancelled','interrupted','imported'}:
                     row['stage']='interrupted'; row['message']='导入的版本保留历史；运行进程不能迁移'
             with self.store.transaction() as conn:
                 conn.execute('PRAGMA defer_foreign_keys=ON')
