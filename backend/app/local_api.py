@@ -33,6 +33,8 @@ def configure_local(app):
     literature=Literature(store); codex=CodexAdapter(store); experiments=Experiments(store); paper=PaperService(store); reviews=Reviews(store,codex)
     versions_service=Versions(store)
     proposals_service=Proposals(store)
+    from .local_paper_assist import register_paper_assist_api
+    register_paper_assist_api(app,store,paper,literature,codex)
     atexit.register(experiments.close)
     app.extensions['easyref']={'store':store,'literature':literature,'codex':codex,'experiments':experiments,'paper':paper,'reviews':reviews,'versions':versions_service}
     app.config['MAX_CONTENT_LENGTH']=100*1024*1024
