@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { streamApi } from '../../utils/api.js';
 import { request } from './shared.jsx';
 
@@ -17,7 +17,7 @@ export default function useLiteratureTranslation(paperId) {
     window.addEventListener('easyref-translation-settings', load);
     return () => { live = false; window.removeEventListener('easyref-translation-settings', load); pending.current?.abort(); pending.current = null; };
   }, [paperId]);
-  const start = async (text) => {
+  const start = useCallback(async (text) => {
     pending.current?.abort();
     const controller = new AbortController(); pending.current = controller;
     setSubmittedText(text); setTranslation(''); setError(''); setBusy(true);
@@ -35,7 +35,10 @@ export default function useLiteratureTranslation(paperId) {
     } finally {
       if (pending.current === controller) { pending.current = null; setBusy(false); }
     }
-  };
-  const stop = () => { pending.current?.abort(); pending.current = null; setBusy(false); setError('已停止，当前译文可能不完整。'); };
-  return { settings, settingsError, busy, submittedText, translation, error, start, stop };
+  }, [paperId]);
+  const reset = useCallback(() => {
+    pending.current?.abort(); pending.current = null;
+    setBusy(false); setSubmittedText(''); setTranslation(''); setError('');
+  }, []);
+  return { settings, settingsError, busy, submittedText, translation, error, start, reset };
 }

@@ -53,6 +53,7 @@ export default function LiteratureApiSettings({ onClose }) {
       const r = await request('/settings/translation', { method: 'PUT', body: { ...payload(), remove_key: remove } });
       setSettings(r.settings); setKey(''); setVisible(false); setSaved(true);
       window.dispatchEvent(new Event('easyref-translation-settings'));
+      if (!remove) onClose();
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   const unavailable = busy || (!key.trim() && !settings?.has_key) || !settings?.model.trim() || !settings?.base_url.trim();
